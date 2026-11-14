@@ -608,17 +608,24 @@ private fun ApprovalPreviewPanel(
                     else -> "承認待ちのコマンドや差分はありません。下部の入力欄またはマイクボタン長押しからプロンプトを送信できます。"
                 }
                 val isMonospace = !session.approvalPreview.isNullOrBlank() || session.lastResponse.isNullOrBlank()
-                Text(
-                    text = previewContent,
-                    color = if (isWaiting || !session.lastResponse.isNullOrBlank()) {
-                        DeckColors.TextPrimary
-                    } else {
-                        DeckColors.TextSecondary
-                    },
-                    fontFamily = if (isMonospace) FontFamily.Monospace else FontFamily.Default,
-                    fontSize = if (isMonospace) 12.sp else 13.sp,
-                    lineHeight = if (isMonospace) 17.sp else 19.sp
-                )
+                if (!isMonospace && !session.lastResponse.isNullOrBlank()) {
+                    MarkdownResponseView(
+                        markdown = session.lastResponse,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        text = previewContent,
+                        color = if (isWaiting || !session.lastResponse.isNullOrBlank()) {
+                            DeckColors.TextPrimary
+                        } else {
+                            DeckColors.TextSecondary
+                        },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
             }
         }
     }
