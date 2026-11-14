@@ -11,11 +11,26 @@ import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.service.DeckSessionController
+import com.antigravity.deck.updater.ApkInstallResult
+import com.antigravity.deck.updater.AppUpdateManager
+import com.antigravity.deck.updater.ReleaseInfo
+import com.antigravity.deck.updater.UpdateCheckResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class UpdateUiState(
+    val currentVersion: String = BuildConfig.VERSION_NAME,
+    val availableUpdate: ReleaseInfo? = null,
+    val isChecking: Boolean = false,
+    val isDownloading: Boolean = false,
+    val progressPercent: Int? = null,
+    val statusMessage: String? = null
+)
 
 data class DeckUiState(
     val session: AgentSession = AgentSession.initial(),
@@ -26,7 +41,8 @@ data class DeckUiState(
     val speechState: SpeechUiState = SpeechUiState(),
     val feedbackBanner: String? = null,
     val showPairingSheet: Boolean = false,
-    val showNotificationSettings: Boolean = false
+    val showNotificationSettings: Boolean = false,
+    val updateState: UpdateUiState = UpdateUiState()
 )
 
 // 画面固有の状態と常駐セッションコントローラーの状態を統合するViewModel
@@ -38,13 +54,19 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
     }
     private val showPairingSheet = MutableStateFlow(false)
     private val showNotificationSettings = MutableStateFlow(false)
+    private val updateState = MutableStateFlow(UpdateUiState())
+
+    init {
+        checkForUpdates(silent = true)
+    }
 
     val uiState: StateFlow<DeckUiState> = combine(
         controller.state,
         pushToTalk.state,
         showPairingSheet,
-        showNotificationSettings
-    ) { snapshot, speech, pairingVisible, notificationSettingsVisible ->
+        showNotificationSettings,
+        updateState
+    ) { snapshot, speech, pairingVisible, notificationSettingsVisible, update ->
         DeckUiState(
             session = snapshot.session,
             availableModels = snapshot.availableModels,
@@ -54,7 +76,8 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             speechState = speech,
             feedbackBanner = snapshot.feedbackBanner,
             showPairingSheet = pairingVisible,
-            showNotificationSettings = notificationSettingsVisible
+            showNotificationSettings = notificationSettingsVisible,
+            updateState = update
         )
     }.stateIn(
         scope = viewModelScope,
@@ -109,6 +132,123 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateNotificationPrefs(prefs: NotificationPreferences) {
         controller.updateNotificationPrefs(prefs)
+    }
+
+    fun checkForUpdates(silent: Boolean = false) {
+        if (updateState.value.isChecking || updateState.value.isDownloading) return
+        viewModelScope.launch {
+            updateState.update {
+                it.copy(
+                    isChecking = true,
+                    statusMessage = if (silent) it.statusMessage else "GitHub Releases を確認中..."
+                )
+            }
+            when (val result = AppUpdateManager.checkForUpdate(BuildConfig.VERSION_NAME)) {
+                is UpdateCheckResult.UpdateAvailable -> {
+                    updateState.update {
+                        it.copy(
+                            isChecking = false,
+                            availableUpdate = result.release,
+                            statusMessage = "新しいバージョン ${result.release.tagName} が公開されています"
+                        )
+                    }
+                }
+
+                is UpdateCheckResult.UpToDate -> {
+                    updateState.update {
+                        it.copy(
+                            isChecking = false,
+                            availableUpdate = null,
+                            statusMessage = if (silent) null else "最新バージョンです (v${result.currentVersion})"
+                        )
+                    }
+                }
+
+                UpdateCheckResult.NoReleasesYet -> {
+                    updateState.update {
+                        it.copy(
+                            isChecking = false,
+                            availableUpdate = null,
+                            statusMessage = if (silent) null else "公開済みのリリースはまだありません"
+                        )
+                    }
+                }
+
+                is UpdateCheckResult.Error -> {
+                    updateState.update {
+                        it.copy(
+                            isChecking = false,
+                            statusMessage = if (silent) null else "確認失敗: ${result.message}"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun installAvailableUpdate() {
+        val release = updateState.value.availableUpdate ?: return
+        if (updateState.value.isDownloading) return
+
+        viewModelScope.launch {
+            updateState.update {
+                it.copy(
+                    isDownloading = true,
+                    progressPercent = 0,
+                    statusMessage = "${release.tagName} をダウンロード中..."
+                )
+            }
+            try {
+                when (
+                    val result = AppUpdateManager.downloadAndInstallApk(
+                        context = getApplication(),
+                        release = release,
+                        onProgress = { pct ->
+                            updateState.update { it.copy(progressPercent = pct) }
+                        }
+                    )
+                ) {
+                    ApkInstallResult.LaunchedInstaller -> {
+                        updateState.update {
+                            it.copy(
+                                isDownloading = false,
+                                progressPercent = 100,
+                                statusMessage = "インストーラを起動しました"
+                            )
+                        }
+                    }
+
+                    ApkInstallResult.NeedsInstallPermission -> {
+                        AppUpdateManager.openInstallPermissionSettings(getApplication())
+                        updateState.update {
+                            it.copy(
+                                isDownloading = false,
+                                progressPercent = null,
+                                statusMessage = "このアプリからのインストールを許可してから再実行してください"
+                            )
+                        }
+                    }
+
+                    is ApkInstallResult.Error -> {
+                        updateState.update {
+                            it.copy(
+                                isDownloading = false,
+                                progressPercent = null,
+                                statusMessage = "更新失敗: ${result.message}"
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                updateState.update {
+                    it.copy(
+                        isDownloading = false,
+                        progressPercent = null,
+                        statusMessage = "ダウンロード失敗: ${e.message ?: "エラー"}"
+                    )
+                }
+            }
+        }
     }
 
     fun startPushToTalk() {

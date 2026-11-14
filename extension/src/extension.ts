@@ -12,6 +12,7 @@ import { DeckHookServer } from "./server/hook-server";
 import { DeckWebSocketServer } from "./server/ws-server";
 import { SessionStore } from "./state/session-store";
 import { PairingWebviewPanel } from "./ui/pairing-webview";
+import { checkExtensionUpdates } from "./updater/extension-updater";
 
 // 候補コマンド一覧のうちIDEに登録済みの最初のコマンドを実行する
 async function executeFirstAvailableCommand(
@@ -221,7 +222,8 @@ function readExtensionConfig() {
     hookPort: cfg.get<number>("hookPort", 8766),
     authToken: cfg.get<string>("authToken", "antigravity-local"),
     waitForMobileApproval: cfg.get<boolean>("waitForMobileApproval", true),
-    autoStart: cfg.get<boolean>("autoStart", true)
+    autoStart: cfg.get<boolean>("autoStart", true),
+    autoCheckUpdates: cfg.get<boolean>("autoCheckUpdates", true)
   };
 }
 
@@ -292,6 +294,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
 
+  const currentVersion =
+    typeof context.extension.packageJSON?.version === "string"
+      ? context.extension.packageJSON.version
+      : "0.1.0";
+
   context.subscriptions.push(
     output,
     statusBar,
@@ -316,6 +323,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("antigravityDeck.simulateLifecycle", () => {
       triggerSimulation();
     }),
+    vscode.commands.registerCommand("antigravityDeck.checkForUpdates", async () => {
+      await checkExtensionUpdates({
+        currentVersion,
+        output,
+        silent: false
+      });
+    }),
     {
       dispose: () => {
         sessionStore.dispose();
@@ -327,6 +341,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateStatusBar(false, 0);
   if (currentConfig.autoStart) {
     await startServers();
+  }
+
+  if (currentConfig.autoCheckUpdates) {
+    const updateTimer = setTimeout(() => {
+      void checkExtensionUpdates({
+        currentVersion,
+        output,
+        silent: true
+      });
+    }, 5000);
+    context.subscriptions.push({
+      dispose: () => clearTimeout(updateTimer)
+    });
   }
 }
 

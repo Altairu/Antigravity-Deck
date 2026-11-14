@@ -44,6 +44,8 @@ class MainActivity : ComponentActivity() {
                     onOpenNotificationSettings = deckViewModel::openNotificationSettings,
                     onDismissNotificationSettings = deckViewModel::closeNotificationSettings,
                     onUpdateNotificationPrefs = deckViewModel::updateNotificationPrefs,
+                    onCheckForUpdates = { deckViewModel.checkForUpdates(silent = false) },
+                    onInstallAvailableUpdate = deckViewModel::installAvailableUpdate,
                     onTriggerSimulation = deckViewModel::triggerSimulation,
                     onStartPushToTalk = deckViewModel::startPushToTalk,
                     onStopPushToTalk = deckViewModel::stopPushToTalk

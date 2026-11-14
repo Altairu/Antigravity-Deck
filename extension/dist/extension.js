@@ -42,6 +42,7 @@ const hook_server_1 = require("./server/hook-server");
 const ws_server_1 = require("./server/ws-server");
 const session_store_1 = require("./state/session-store");
 const pairing_webview_1 = require("./ui/pairing-webview");
+const extension_updater_1 = require("./updater/extension-updater");
 // 候補コマンド一覧のうちIDEに登録済みの最初のコマンドを実行する
 async function executeFirstAvailableCommand(candidates, args, output) {
     const registered = new Set(await vscode.commands.getCommands(true));
@@ -182,7 +183,8 @@ function readExtensionConfig() {
         hookPort: cfg.get("hookPort", 8766),
         authToken: cfg.get("authToken", "antigravity-local"),
         waitForMobileApproval: cfg.get("waitForMobileApproval", true),
-        autoStart: cfg.get("autoStart", true)
+        autoStart: cfg.get("autoStart", true),
+        autoCheckUpdates: cfg.get("autoCheckUpdates", true)
     };
 }
 async function activate(context) {
@@ -243,6 +245,9 @@ async function activate(context) {
         sessionStore.simulateAgentLifecycle();
         vscode.window.showInformationMessage("Antigravity Deck でエージェント状態のシミュレーションを開始しました");
     };
+    const currentVersion = typeof context.extension.packageJSON?.version === "string"
+        ? context.extension.packageJSON.version
+        : "0.1.0";
     context.subscriptions.push(output, statusBar, vscode.commands.registerCommand("antigravityDeck.startServer", async () => {
         await startServers();
         vscode.window.showInformationMessage("Antigravity Deck サーバーを起動しました");
@@ -256,6 +261,12 @@ async function activate(context) {
         await pairing_webview_1.PairingWebviewPanel.show(wsServer.getPort(), wsServer.getAuthToken(), triggerSimulation);
     }), vscode.commands.registerCommand("antigravityDeck.simulateLifecycle", () => {
         triggerSimulation();
+    }), vscode.commands.registerCommand("antigravityDeck.checkForUpdates", async () => {
+        await (0, extension_updater_1.checkExtensionUpdates)({
+            currentVersion,
+            output,
+            silent: false
+        });
     }), {
         dispose: () => {
             sessionStore.dispose();
@@ -265,6 +276,18 @@ async function activate(context) {
     updateStatusBar(false, 0);
     if (currentConfig.autoStart) {
         await startServers();
+    }
+    if (currentConfig.autoCheckUpdates) {
+        const updateTimer = setTimeout(() => {
+            void (0, extension_updater_1.checkExtensionUpdates)({
+                currentVersion,
+                output,
+                silent: true
+            });
+        }, 5000);
+        context.subscriptions.push({
+            dispose: () => clearTimeout(updateTimer)
+        });
     }
 }
 async function deactivate() {

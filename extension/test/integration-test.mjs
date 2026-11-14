@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import { SessionStore } from "../dist/state/session-store.js";
 import { DeckWebSocketServer } from "../dist/server/ws-server.js";
 import { DeckHookServer } from "../dist/server/hook-server.js";
+import { compareSemver, parseLatestVsixRelease } from "../dist/updater/github-release.js";
 
 async function run() {
   const store = new SessionStore();
@@ -193,6 +194,29 @@ async function run() {
       ),
       "last_response should be extracted and broadcast on Stop hook"
     );
+
+    // 7. GitHub Releasesバージョンの比較とアセット解析が正しく動くこと
+    assert.ok(compareSemver("0.1.0", "v0.2.0") < 0);
+    assert.equal(compareSemver("0.2.0", "v0.2.0"), 0);
+    assert.ok(compareSemver("0.2.1", "0.2.0") > 0);
+    const parsedRelease = parseLatestVsixRelease(
+      JSON.stringify({
+        tag_name: "v0.2.0",
+        html_url: "https://github.com/Altairu/Antigravity-Deck/releases/tag/v0.2.0",
+        assets: [
+          {
+            name: "antigravity-deck-0.2.0.apk",
+            browser_download_url: "https://example.com/app.apk"
+          },
+          {
+            name: "antigravity-deck-0.2.0.vsix",
+            browser_download_url: "https://example.com/ext.vsix"
+          }
+        ]
+      })
+    );
+    assert.equal(parsedRelease?.version, "0.2.0");
+    assert.equal(parsedRelease?.assetName, "antigravity-deck-0.2.0.vsix");
 
     ws.close();
     console.log("EXTENSION_INTEGRATION_TEST_OK");

@@ -54,8 +54,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -85,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.antigravity.deck.DeckUiState
+import com.antigravity.deck.UpdateUiState
 import com.antigravity.deck.hardware.SpeechUiState
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
@@ -108,6 +111,8 @@ fun DeckCommandCenterScreen(
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationSettings: () -> Unit,
     onUpdateNotificationPrefs: (NotificationPreferences) -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onInstallAvailableUpdate: () -> Unit,
     onTriggerSimulation: () -> Unit,
     onStartPushToTalk: () -> Unit,
     onStopPushToTalk: () -> Unit
@@ -178,6 +183,7 @@ fun DeckCommandCenterScreen(
             // 接続状態とワンタップ接続バー
             TopConnectionBar(
                 connectionStatus = uiState.connectionStatus,
+                hasAvailableUpdate = uiState.updateState.availableUpdate != null,
                 onConnectUsbPreset = onConnectUsbPreset,
                 onOpenPairingSheet = onOpenPairingSheet,
                 onOpenNotificationSettings = onOpenNotificationSettings,
@@ -276,7 +282,10 @@ fun DeckCommandCenterScreen(
     if (uiState.showNotificationSettings) {
         NotificationSettingsDialog(
             prefs = uiState.notificationPrefs,
+            updateState = uiState.updateState,
             onUpdate = onUpdateNotificationPrefs,
+            onCheckForUpdates = onCheckForUpdates,
+            onInstallAvailableUpdate = onInstallAvailableUpdate,
             onDismiss = onDismissNotificationSettings
         )
     }
@@ -285,6 +294,7 @@ fun DeckCommandCenterScreen(
 @Composable
 private fun TopConnectionBar(
     connectionStatus: ConnectionStatus,
+    hasAvailableUpdate: Boolean,
     onConnectUsbPreset: () -> Unit,
     onOpenPairingSheet: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
@@ -365,10 +375,19 @@ private fun TopConnectionBar(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Notifications,
-                    contentDescription = "通知設定",
+                    contentDescription = "設定と通知",
                     tint = DeckColors.TextPrimary,
                     modifier = Modifier.size(16.dp)
                 )
+                if (hasAvailableUpdate) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(DeckColors.StatusThinking)
+                    )
+                }
             }
         }
     }
@@ -967,7 +986,10 @@ private fun ReasoningEffortSelector(
 @Composable
 private fun NotificationSettingsDialog(
     prefs: NotificationPreferences,
+    updateState: UpdateUiState,
     onUpdate: (NotificationPreferences) -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onInstallAvailableUpdate: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -977,13 +999,14 @@ private fun NotificationSettingsDialog(
         textContentColor = DeckColors.TextPrimary,
         title = {
             Text(
-                text = "通知の詳細設定",
+                text = "通知とアップデート設定",
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp
             )
         },
         text = {
             Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 NotificationSettingRow(
@@ -1027,6 +1050,82 @@ private fun NotificationSettingsDialog(
                         onUpdate(prefs.copy(hapticsEnabled = it))
                     }
                 )
+
+                HorizontalDivider(
+                    color = DeckColors.BorderMuted,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Text(
+                    text = "アプリのアップデート (v${updateState.currentVersion})",
+                    color = DeckColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (!updateState.statusMessage.isNullOrBlank()) {
+                    Text(
+                        text = updateState.statusMessage,
+                        color = if (updateState.availableUpdate != null) {
+                            DeckColors.StatusThinking
+                        } else {
+                            DeckColors.TextSecondary
+                        },
+                        fontSize = 12.sp
+                    )
+                }
+
+                if (updateState.isDownloading) {
+                    val progress = (updateState.progressPercent ?: 0) / 100f
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = DeckColors.StatusThinking,
+                        trackColor = DeckColors.Background
+                    )
+                }
+
+                val available = updateState.availableUpdate
+                if (available != null) {
+                    Button(
+                        onClick = onInstallAvailableUpdate,
+                        enabled = !updateState.isDownloading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeckColors.AccentBlue,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (updateState.isDownloading) {
+                                "ダウンロード中 (${updateState.progressPercent ?: 0}%)"
+                            } else {
+                                "${available.tagName} をダウンロードして更新"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onCheckForUpdates,
+                        enabled = !updateState.isChecking && !updateState.isDownloading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeckColors.SurfaceElevated,
+                            contentColor = DeckColors.TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (updateState.isChecking) {
+                                "GitHub Releases を確認中..."
+                            } else {
+                                "最新バージョンを確認"
+                            },
+                            fontSize = 13.sp
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
