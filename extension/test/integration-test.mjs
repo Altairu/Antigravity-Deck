@@ -10,6 +10,7 @@ import { SessionStore } from "../dist/state/session-store.js";
 import { DeckWebSocketServer } from "../dist/server/ws-server.js";
 import { DeckHookServer } from "../dist/server/hook-server.js";
 import { hasWorkspaceHooks, setupWorkspaceHooks } from "../dist/hooks/workspace-hooks.js";
+import { readConversationHistory } from "../dist/state/transcript-reader.js";
 import { compareSemver, parseLatestVsixRelease } from "../dist/updater/github-release.js";
 
 async function run() {
@@ -33,16 +34,17 @@ async function run() {
     }
   };
 
+  const tempBrainRoot = await fs.mkdtemp(path.join(os.tmpdir(), "deck-brain-test-"));
+  const tempFreshWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-fresh-"));
+  const tempMergeWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-merge-"));
+
   const wsServer = new DeckWebSocketServer({
     port: 18765,
     authToken: "test-token",
     sessionStore: store,
-    commandBridge: bridge
+    commandBridge: bridge,
+    brainRootDir: tempBrainRoot
   });
-
-  const tempBrainRoot = await fs.mkdtemp(path.join(os.tmpdir(), "deck-brain-test-"));
-  const tempFreshWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-fresh-"));
-  const tempMergeWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-merge-"));
 
   const hookServer = new DeckHookServer({
     port: 18766,
@@ -148,15 +150,39 @@ async function run() {
       "internal model ID should normalize to display name and effort"
     );
 
-    // 6. Stop Hook時にトランスクリプトから最新返答(last_response)が配信されること
+    // 6. Stop Hook時にトランスクリプトから最新返答(last_response)と会話履歴(messages)が配信されること
     const logsDir = path.join(tempBrainRoot, "conv-1", ".system_generated", "logs");
     await fs.mkdir(logsDir, { recursive: true });
     const transcriptLines = [
-      JSON.stringify({ source: "USER_EXPLICIT", type: "USER_INPUT", content: "テスト質問" }),
+      JSON.stringify({
+        source: "USER_EXPLICIT",
+        type: "USER_INPUT",
+        content: "<CONTEXT_SUMMARY>要約</CONTEXT_SUMMARY>",
+        created_at: "2026-11-15T00:00:00Z"
+      }),
+      JSON.stringify({
+        source: "USER_EXPLICIT",
+        type: "USER_INPUT",
+        content: "<USER_REQUEST>\n最初の質問\n</USER_REQUEST>\n<ADDITIONAL_METADATA>ignored</ADDITIONAL_METADATA>",
+        created_at: "2026-11-15T00:01:00Z"
+      }),
       JSON.stringify({
         source: "MODEL",
         type: "PLANNER_RESPONSE",
-        content: "スマートフォンへ返す最新の回答テキストです。"
+        content: "最初の回答です。",
+        created_at: "2026-11-15T00:01:10Z"
+      }),
+      JSON.stringify({
+        source: "USER_EXPLICIT",
+        type: "USER_INPUT",
+        content: "<USER_REQUEST>\nテスト質問\n</USER_REQUEST>",
+        created_at: "2026-11-15T00:02:00Z"
+      }),
+      JSON.stringify({
+        source: "MODEL",
+        type: "PLANNER_RESPONSE",
+        content: "スマートフォンへ返す最新の回答テキストです。",
+        created_at: "2026-11-15T00:02:10Z"
       })
     ].join("\n");
     await fs.writeFile(path.join(logsDir, "transcript_full.jsonl"), transcriptLines, "utf8");
@@ -188,15 +214,28 @@ async function run() {
     });
 
     await new Promise((r) => setTimeout(r, 80));
-    assert.ok(
-      messages.some(
+    const stopSync = [...messages]
+      .reverse()
+      .find(
         (m) =>
           m.type === "state_sync" &&
           m.status === "done" &&
           m.last_response === "スマートフォンへ返す最新の回答テキストです。"
-      ),
-      "last_response should be extracted and broadcast on Stop hook"
+      );
+    assert.ok(stopSync, "last_response should be extracted and broadcast on Stop hook");
+    assert.ok(Array.isArray(stopSync.messages), "state_sync should include messages array");
+    assert.deepEqual(
+      stopSync.messages.map((item) => ({ role: item.role, content: item.content })),
+      [
+        { role: "user", content: "最初の質問" },
+        { role: "assistant", content: "最初の回答です。" },
+        { role: "user", content: "テスト質問" },
+        { role: "assistant", content: "スマートフォンへ返す最新の回答テキストです。" }
+      ]
     );
+
+    const autoHistory = await readConversationHistory(undefined, tempBrainRoot);
+    assert.equal(autoHistory.length, 4);
 
     // 7. GitHub Releasesバージョンの比較とアセット解析が正しく動くこと
     assert.ok(compareSemver("0.1.0", "v0.2.0") < 0);

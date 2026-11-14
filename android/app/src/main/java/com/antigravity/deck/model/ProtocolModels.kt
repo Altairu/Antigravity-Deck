@@ -35,6 +35,25 @@ enum class ReasoningEffort(val wireValue: String, val label: String) {
     }
 }
 
+// 会話履歴のロール種別
+enum class MessageRole(val wireValue: String) {
+    USER("user"),
+    ASSISTANT("assistant");
+
+    companion object {
+        fun parse(raw: String?): MessageRole {
+            return if (raw.equals("user", ignoreCase = true)) USER else ASSISTANT
+        }
+    }
+}
+
+// ユーザーとエージェント間の1件の会話メッセージ
+data class ConversationMessage(
+    val role: MessageRole,
+    val content: String,
+    val timestamp: String? = null
+)
+
 // 単一エージェントの状態モデル
 data class AgentSession(
     val title: String,
@@ -43,7 +62,8 @@ data class AgentSession(
     val lastResponse: String? = null,
     val reasoningEffort: ReasoningEffort,
     val modelName: String = DEFAULT_MODEL,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    val messages: List<ConversationMessage> = emptyList()
 ) {
     companion object {
         const val DEFAULT_MODEL = "Gemini 4 Hydrogen"
@@ -229,6 +249,7 @@ object ProtocolCodec {
             rawModel
         }
         val updatedAt = if (obj.isNull("updated_at")) null else obj.optString("updated_at")
+        val messages = parseMessages(obj.optJSONArray("messages"))
         return AgentSession(
             title = title,
             status = status,
@@ -236,8 +257,37 @@ object ProtocolCodec {
             lastResponse = lastResponse,
             reasoningEffort = effort,
             modelName = modelName,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            messages = messages
         )
+    }
+
+    private fun parseMessages(messagesArray: JSONArray?): List<ConversationMessage> {
+        if (messagesArray == null || messagesArray.length() == 0) {
+            return emptyList()
+        }
+        return buildList {
+            for (idx in 0 until messagesArray.length()) {
+                val item = messagesArray.optJSONObject(idx) ?: continue
+                val content = item.optString("content", "").trim()
+                if (content.isEmpty()) {
+                    continue
+                }
+                val role = MessageRole.parse(item.optString("role", "assistant"))
+                val timestamp = if (item.isNull("timestamp")) {
+                    null
+                } else {
+                    item.optString("timestamp").takeIf { it.isNotBlank() }
+                }
+                add(
+                    ConversationMessage(
+                        role = role,
+                        content = content,
+                        timestamp = timestamp
+                    )
+                )
+            }
+        }
     }
 
     fun commandApprove(): String =

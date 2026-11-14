@@ -7,6 +7,7 @@ import {
   normalizeReasoningEffort
 } from "../config/antigravity-bindings";
 import { AgentSession, SessionStore } from "../state/session-store";
+import { readConversationHistory } from "../state/transcript-reader";
 
 interface ClientMeta {
   authenticated: boolean;
@@ -21,6 +22,7 @@ export interface WsServerOptions {
   commandBridge: CommandBridge;
   onLog?: (message: string) => void;
   onClientCountChange?: (count: number) => void;
+  brainRootDir?: string;
 }
 
 export class DeckWebSocketServer {
@@ -33,6 +35,8 @@ export class DeckWebSocketServer {
   private readonly commandBridge: CommandBridge;
   private readonly onLog: (message: string) => void;
   private readonly onClientCountChange?: (count: number) => void;
+  private readonly brainRootDir?: string;
+  private historyHydrationInFlight = false;
 
   private readonly handleStateUpdated = (session: AgentSession): void => {
     this.broadcast(this.buildStateSyncPayload(session));
@@ -45,6 +49,7 @@ export class DeckWebSocketServer {
     this.commandBridge = options.commandBridge;
     this.onLog = options.onLog || (() => {});
     this.onClientCountChange = options.onClientCountChange;
+    this.brainRootDir = options.brainRootDir;
   }
 
   public updateConfig(port: number, authToken: string): void {
@@ -347,6 +352,7 @@ export class DeckWebSocketServer {
       status: session.status,
       approval_preview: session.approval_preview,
       last_response: session.last_response,
+      messages: session.messages,
       reasoning_effort: session.reasoning_effort,
       model_name: session.model_name,
       available_models: this.sessionStore.getAvailableModels(),
@@ -355,7 +361,44 @@ export class DeckWebSocketServer {
   }
 
   private sendStateSync(ws: WebSocket): void {
-    this.sendJson(ws, this.buildStateSyncPayload(this.sessionStore.getState()));
+    const state = this.sessionStore.getState();
+    this.sendJson(ws, this.buildStateSyncPayload(state));
+    if (state.messages.length === 0) {
+      this.hydrateHistoryIfEmpty();
+    }
+  }
+
+  // セッション履歴が空のときにローカルログから会話履歴を復元して配信する
+  private hydrateHistoryIfEmpty(): void {
+    if (this.historyHydrationInFlight) {
+      return;
+    }
+    this.historyHydrationInFlight = true;
+    const targetConversationId = this.sessionStore.getConversationId();
+
+    void readConversationHistory(targetConversationId, this.brainRootDir)
+      .then((history) => {
+        if (history.length === 0) {
+          return;
+        }
+        const current = this.sessionStore.getState();
+        if (current.messages.length > 0) {
+          return;
+        }
+        const lastAssistant = [...history]
+          .reverse()
+          .find((item) => item.role === "assistant")?.content;
+        this.sessionStore.updateState({
+          ...(lastAssistant && !current.last_response ? { last_response: lastAssistant } : {}),
+          messages: history
+        });
+      })
+      .catch(() => {
+        // 履歴読み取りに失敗した場合は現在状態のまま継続する
+      })
+      .finally(() => {
+        this.historyHydrationInFlight = false;
+      });
   }
 
   private broadcast(payload: unknown): void {

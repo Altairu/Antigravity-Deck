@@ -78,6 +78,7 @@ sequenceDiagram
 * `status`: `idle` / `thinking` / `waiting_approval` / `done` / `error` のいずれか
 * `approval_preview`: 実行予定のコマンドや変更ファイル差分の要約文字列、または `null`
 * `last_response`: エージェントの最新返答テキスト、または `null`
+* `messages`: `{ "role": "user" | "assistant", "content": string, "timestamp"?: string }` で構成される会話履歴配列
 * `reasoning_effort`: `low` / `medium` / `high` / `xhigh` のいずれか
 * `model_name`: セッションで現在利用中のAIモデル識別子文字列
 * `available_models`: 選択可能なAIモデル一覧配列

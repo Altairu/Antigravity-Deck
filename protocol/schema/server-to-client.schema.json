@@ -74,6 +74,13 @@
           ],
           "description": "エージェントの最新返答テキスト"
         },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conversationMessage"
+          },
+          "description": "ユーザーとエージェントの会話履歴一覧"
+        },
         "reasoning_effort": {
           "$ref": "#/$defs/reasoningEffort"
         },
@@ -92,6 +99,30 @@
           "type": "string",
           "format": "date-time",
           "description": "最終更新のISO 8601時刻"
+        }
+      }
+    },
+    "conversationMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "content"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

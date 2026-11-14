@@ -126,4 +126,35 @@ class ProtocolModelsTest {
         assertEquals(true, silentPrefs.shouldNotify(AgentStatus.DONE))
         assertFalse(silentPrefs.shouldVibrate(AgentStatus.DONE))
     }
+
+    @Test
+    fun decodeStateSync_parsesConversationMessages() {
+        val raw = """
+            {
+              "type": "state_sync",
+              "timestamp": "2026-11-15T02:00:00.000Z",
+              "title": "履歴同期テスト",
+              "status": "done",
+              "approval_preview": null,
+              "last_response": "修正が完了しました。",
+              "messages": [
+                { "role": "user", "content": "ビルドエラーを直して", "timestamp": "2026-11-15T01:59:00Z" },
+                { "role": "assistant", "content": "修正が完了しました。", "timestamp": "2026-11-15T02:00:00Z" },
+                { "role": "assistant", "content": "   " }
+              ],
+              "reasoning_effort": "medium",
+              "model_name": "Gemini 4 Hydrogen"
+            }
+        """.trimIndent()
+
+        val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
+        assertNotNull(event)
+        val messages = event!!.session.messages
+        assertEquals(2, messages.size)
+        assertEquals(MessageRole.USER, messages[0].role)
+        assertEquals("ビルドエラーを直して", messages[0].content)
+        assertEquals("2026-11-15T01:59:00Z", messages[0].timestamp)
+        assertEquals(MessageRole.ASSISTANT, messages[1].role)
+        assertEquals("修正が完了しました。", messages[1].content)
+    }
 }

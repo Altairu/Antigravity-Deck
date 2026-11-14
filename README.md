@@ -9,7 +9,7 @@ It connects a VS Code-compatible extension on your PC to an Android app over Web
 ## Key Features
 
 * Real-time Agent Sync: Mirrors `idle`, `thinking`, `waiting_approval`, `done`, and `error` states to your phone with status colors and haptic feedback
-* Prompt Input & Markdown Responses: Send messages via text or Push-to-Talk voice input and read Antigravity replies rendered as Markdown with headings and code blocks
+* Conversation History & Markdown View: Inspect chronological conversation history extracted from Antigravity transcripts, switch between History, Latest, and Approval views, and send prompts via text or Push-to-Talk voice input
 * Approval Previews & Notification Actions: Inspect pending commands or file changes captured via `PreToolUse` hooks and respond directly from the app or Approve/Reject notification buttons
 * Notification & Language Settings: Toggle notifications and vibration per event (approval requests, preview details, task completion, errors) and switch app language between System, Japanese, and English
 * Model & Reasoning Effort Control: Switch between `Gemini 4 Hydrogen`, `Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Sonnet 5.5`, `Claude Opus 5.5`, `GPT-OSS 120B`, and `Orchestrator (Argon)`, as well as `low`, `medium`, `high`, and `xhigh` reasoning effort

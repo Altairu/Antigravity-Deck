@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeckWebSocketServer = void 0;
 const ws_1 = require("ws");
 const antigravity_bindings_1 = require("../config/antigravity-bindings");
+const transcript_reader_1 = require("../state/transcript-reader");
 class DeckWebSocketServer {
     wss = null;
     heartbeatTimer = null;
@@ -14,6 +15,8 @@ class DeckWebSocketServer {
     commandBridge;
     onLog;
     onClientCountChange;
+    brainRootDir;
+    historyHydrationInFlight = false;
     handleStateUpdated = (session) => {
         this.broadcast(this.buildStateSyncPayload(session));
     };
@@ -24,6 +27,7 @@ class DeckWebSocketServer {
         this.commandBridge = options.commandBridge;
         this.onLog = options.onLog || (() => { });
         this.onClientCountChange = options.onClientCountChange;
+        this.brainRootDir = options.brainRootDir;
     }
     updateConfig(port, authToken) {
         this.port = port;
@@ -285,6 +289,7 @@ class DeckWebSocketServer {
             status: session.status,
             approval_preview: session.approval_preview,
             last_response: session.last_response,
+            messages: session.messages,
             reasoning_effort: session.reasoning_effort,
             model_name: session.model_name,
             available_models: this.sessionStore.getAvailableModels(),
@@ -292,7 +297,42 @@ class DeckWebSocketServer {
         };
     }
     sendStateSync(ws) {
-        this.sendJson(ws, this.buildStateSyncPayload(this.sessionStore.getState()));
+        const state = this.sessionStore.getState();
+        this.sendJson(ws, this.buildStateSyncPayload(state));
+        if (state.messages.length === 0) {
+            this.hydrateHistoryIfEmpty();
+        }
+    }
+    // セッション履歴が空のときにローカルログから会話履歴を復元して配信する
+    hydrateHistoryIfEmpty() {
+        if (this.historyHydrationInFlight) {
+            return;
+        }
+        this.historyHydrationInFlight = true;
+        const targetConversationId = this.sessionStore.getConversationId();
+        void (0, transcript_reader_1.readConversationHistory)(targetConversationId, this.brainRootDir)
+            .then((history) => {
+            if (history.length === 0) {
+                return;
+            }
+            const current = this.sessionStore.getState();
+            if (current.messages.length > 0) {
+                return;
+            }
+            const lastAssistant = [...history]
+                .reverse()
+                .find((item) => item.role === "assistant")?.content;
+            this.sessionStore.updateState({
+                ...(lastAssistant && !current.last_response ? { last_response: lastAssistant } : {}),
+                messages: history
+            });
+        })
+            .catch(() => {
+            // 履歴読み取りに失敗した場合は現在状態のまま継続する
+        })
+            .finally(() => {
+            this.historyHydrationInFlight = false;
+        });
     }
     broadcast(payload) {
         const serialized = JSON.stringify(payload);

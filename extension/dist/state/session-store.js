@@ -18,6 +18,7 @@ class SessionStore extends node_events_1.EventEmitter {
             status: "idle",
             approval_preview: null,
             last_response: null,
+            messages: [],
             reasoning_effort: "medium",
             model_name: antigravity_bindings_1.DEFAULT_MODEL,
             updated_at: new Date().toISOString()
@@ -27,7 +28,10 @@ class SessionStore extends node_events_1.EventEmitter {
         return [...this.availableModels];
     }
     getState() {
-        return { ...this.session };
+        return {
+            ...this.session,
+            messages: [...this.session.messages]
+        };
     }
     getConversationId() {
         return this.conversationId;
@@ -39,13 +43,28 @@ class SessionStore extends node_events_1.EventEmitter {
     }
     // 単一セッションの状態を更新し変更イベントを発行する
     updateState(patch) {
+        const nextMessages = patch.messages ? [...patch.messages] : [...this.session.messages];
         this.session = {
             ...this.session,
             ...patch,
+            messages: nextMessages,
             updated_at: new Date().toISOString()
         };
-        this.emit("state_updated", { ...this.session });
-        return { ...this.session };
+        this.emit("state_updated", this.getState());
+        return this.getState();
+    }
+    withAppendedMessage(role, content, timestamp = new Date().toISOString()) {
+        const current = [...this.session.messages];
+        const trimmed = content.trim();
+        if (!trimmed) {
+            return current;
+        }
+        const last = current[current.length - 1];
+        if (last && last.role === role && last.content === trimmed) {
+            return current;
+        }
+        current.push({ role, content: trimmed, timestamp });
+        return current;
     }
     setReasoningEffort(effort) {
         return this.updateState({ reasoning_effort: effort });
@@ -64,11 +83,13 @@ class SessionStore extends node_events_1.EventEmitter {
     recordPrompt(prompt) {
         const trimmed = prompt.trim();
         const title = trimmed.length > 44 ? `${trimmed.slice(0, 41)}...` : trimmed;
+        const nextMessages = this.withAppendedMessage("user", trimmed);
         return this.updateState({
             title: title || this.session.title,
             status: "thinking",
             approval_preview: null,
-            last_response: null
+            last_response: null,
+            messages: nextMessages
         });
     }
     // スマホ側からの承認待ちPromiseを登録する
@@ -160,10 +181,12 @@ class SessionStore extends node_events_1.EventEmitter {
         const thinkingMs = options?.thinkingMs ?? 2000;
         const autoApproveDelayMs = options?.autoApproveDelayMs ?? 12000;
         const finishMs = options?.finishMs ?? 1500;
+        const simStartMessages = this.withAppendedMessage("user", "Antigravity Deck の結合テストを実行して結果を教えて");
         this.updateState({
             title: "Antigravity Deck 結合テスト",
             status: "thinking",
-            approval_preview: null
+            approval_preview: null,
+            messages: simStartMessages
         });
         const t1 = setTimeout(() => {
             if (this.simulationGeneration !== generation) {
@@ -194,10 +217,13 @@ class SessionStore extends node_events_1.EventEmitter {
                     if (this.simulationGeneration !== generation) {
                         return;
                     }
+                    const doneText = "結合テストが完了しました。変更箇所のビルドと検証に問題はありません。";
+                    const simDoneMessages = this.withAppendedMessage("assistant", doneText);
                     this.updateState({
                         status: "done",
                         approval_preview: null,
-                        last_response: "結合テストが完了しました。変更箇所のビルドと検証に問題はありません。"
+                        last_response: doneText,
+                        messages: simDoneMessages
                     });
                 }, finishMs);
                 this.simulationTimers.push(tDone);

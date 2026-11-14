@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9
+
+* Added conversation history timeline (`messages`) synced from Antigravity transcripts to the Android companion app
+* Added History / Latest and Approval / History view switching on Android so you can inspect prior messages even while reviewing an approval request
+* Antigravity のトランスクリプトから取得した会話履歴タイムライン (`messages`) の同期に対応し、Android アプリ上で過去のやり取りと承認プレビューを切り替えて閲覧できるようになりました
+
 ## 0.1.8
 
 * Added `Antigravity Deck: Setup Workspace Hooks` command and pairing panel button to install `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` into any workspace with one click

@@ -10,7 +10,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 
 * Real-time Status Sync: Syncs idle, thinking, waiting approval, done, and error states to your phone in real time
 * Mobile Approval Control: Preview pending commands and file diffs captured by `PreToolUse` hooks and approve or reject from the app or notification bar
-* Chat & Markdown View: Send prompts via keyboard or voice input and read formatted Markdown responses from Antigravity
+* Chat History & Markdown View: Browse chronological conversation history between you and Antigravity, send prompts via keyboard or voice input, and read formatted Markdown responses on your phone
 * Model & Reasoning Effort Switching: Change the active model and reasoning effort level remotely from your phone
 * Notification & Language Preferences: Toggle notifications and vibration per event, and switch the Android app language between System, Japanese, and English
 * Update Checks: Supports updates via Open VSX Registry as well as GitHub Releases update checks
