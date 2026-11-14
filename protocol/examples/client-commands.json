@@ -1,0 +1,21 @@
+{
+  "approve": {
+    "type": "approve"
+  },
+  "reject": {
+    "type": "reject",
+    "reason": "スマートフォンから拒否されました"
+  },
+  "send_prompt": {
+    "type": "send_prompt",
+    "prompt": "単体テストを追加して再度実行してください"
+  },
+  "set_reasoning_effort": {
+    "type": "set_reasoning_effort",
+    "reasoning_effort": "xhigh"
+  },
+  "set_model": {
+    "type": "set_model",
+    "model_name": "gemini-2.5-pro"
+  }
+}

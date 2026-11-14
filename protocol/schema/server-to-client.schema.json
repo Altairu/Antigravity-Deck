@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://antigravity-deck.local/schema/server-to-client.schema.json",
+  "title": "Antigravity Deck サーバーからクライアントへのメッセージ",
+  "description": "PC側のAntigravity拡張機能からAndroidコンパニオンアプリへ配信する単一エージェント状態同期メッセージのJSON Schema定義",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/stateSyncMessage"
+    },
+    {
+      "$ref": "#/$defs/authAckMessage"
+    }
+  ],
+  "$defs": {
+    "agentStatus": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "thinking",
+        "waiting_approval",
+        "done",
+        "error"
+      ],
+      "description": "エージェントの実行状態"
+    },
+    "reasoningEffort": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "description": "推論の深さ設定"
+    },
+    "stateSyncMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "timestamp",
+        "title",
+        "status",
+        "approval_preview",
+        "reasoning_effort",
+        "model_name"
+      ],
+      "properties": {
+        "type": {
+          "const": "state_sync"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "title": {
+          "type": "string",
+          "description": "タスク名や会話のタイトル"
+        },
+        "status": {
+          "$ref": "#/$defs/agentStatus"
+        },
+        "approval_preview": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "承認待ちのコマンドやファイル差分の要約テキスト"
+        },
+        "reasoning_effort": {
+          "$ref": "#/$defs/reasoningEffort"
+        },
+        "model_name": {
+          "type": "string",
+          "description": "現在使用中のAIモデル識別子"
+        },
+        "available_models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "クライアント側で選択可能なAIモデル一覧"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "最終更新のISO 8601時刻"
+        }
+      }
+    },
+    "authAckMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "authenticated"
+      ],
+      "properties": {
+        "type": {
+          "const": "auth_ack"
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

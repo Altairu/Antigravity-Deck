@@ -1,0 +1,89 @@
+{
+  "name": "antigravity-deck",
+  "displayName": "Antigravity Deck",
+  "description": "Google Antigravityのエージェント状態をAndroidスマートフォンから監視および承認操作するためのコンパニオン拡張機能",
+  "version": "0.1.0",
+  "publisher": "antigravity-deck",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://example.invalid/antigravity-deck"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravityDeck.showPairingQr",
+        "title": "Antigravity Deck: Show Pairing QR"
+      },
+      {
+        "command": "antigravityDeck.simulateLifecycle",
+        "title": "Antigravity Deck: Simulate Agent Lifecycle"
+      },
+      {
+        "command": "antigravityDeck.startServer",
+        "title": "Antigravity Deck: Start Server"
+      },
+      {
+        "command": "antigravityDeck.stopServer",
+        "title": "Antigravity Deck: Stop Server"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Deck",
+      "properties": {
+        "antigravityDeck.wsPort": {
+          "type": "number",
+          "default": 8765,
+          "description": "Androidコンパニオンアプリと通信するWebSocketサーバーのポート番号"
+        },
+        "antigravityDeck.hookPort": {
+          "type": "number",
+          "default": 8766,
+          "description": "Antigravity Lifecycle Hooksから通知を受け取るローカルHTTPサーバーのポート番号"
+        },
+        "antigravityDeck.authToken": {
+          "type": "string",
+          "default": "antigravity-local",
+          "description": "WebSocket接続時に検証する簡易認証トークン"
+        },
+        "antigravityDeck.waitForMobileApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Androidクライアント接続中にPreToolUseフックでスマートフォンからの承認応答を待機するかどうか"
+        },
+        "antigravityDeck.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "拡張機能の起動時にWebSocketおよびHTTPサーバーを自動起動するかどうか"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.12",
+    "@vscode/vsce": "^2.32.0",
+    "typescript": "^5.5.4"
+  }
+}

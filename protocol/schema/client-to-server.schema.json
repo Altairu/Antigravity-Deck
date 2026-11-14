@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://antigravity-deck.local/schema/client-to-server.schema.json",
+  "title": "Antigravity Deck クライアントからサーバーへの操作コマンド",
+  "description": "AndroidコンパニオンアプリからPC側のAntigravity拡張機能へ送信する単一エージェント操作コマンドのJSON Schema定義",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/approveCommand"
+    },
+    {
+      "$ref": "#/$defs/rejectCommand"
+    },
+    {
+      "$ref": "#/$defs/sendPromptCommand"
+    },
+    {
+      "$ref": "#/$defs/setReasoningEffortCommand"
+    },
+    {
+      "$ref": "#/$defs/setModelCommand"
+    },
+    {
+      "$ref": "#/$defs/authCommand"
+    }
+  ],
+  "$defs": {
+    "reasoningEffort": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "description": "設定する推論レベル"
+    },
+    "approveCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "approve"
+        },
+        "action": {
+          "const": "approve"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "rejectCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "reject"
+        },
+        "action": {
+          "const": "reject"
+        },
+        "reason": {
+          "type": "string",
+          "description": "拒否理由のメッセージ"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "sendPromptCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "send_prompt"
+        },
+        "action": {
+          "const": "send_prompt"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "音声入力やテキスト入力で送信するプロンプト本文"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "setReasoningEffortCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "set_reasoning_effort"
+        },
+        "action": {
+          "const": "set_reasoning_effort"
+        },
+        "reasoning_effort": {
+          "$ref": "#/$defs/reasoningEffort"
+        }
+      },
+      "required": [
+        "reasoning_effort"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "setModelCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "set_model"
+        },
+        "action": {
+          "const": "set_model"
+        },
+        "model_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "切り替え先のAIモデル識別子"
+        }
+      },
+      "required": [
+        "model_name"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "authCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "auth"
+        },
+        "action": {
+          "const": "auth"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    }
+  }
+}
