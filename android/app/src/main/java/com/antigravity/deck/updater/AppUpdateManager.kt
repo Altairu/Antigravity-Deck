@@ -6,6 +6,9 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -111,7 +114,8 @@ object AppUpdateManager {
 
     suspend fun checkForUpdate(
         currentVersion: String,
-        repoSlug: String = DEFAULT_GITHUB_REPO
+        repoSlug: String = DEFAULT_GITHUB_REPO,
+        strings: DeckStrings = DeckI18n.strings(AppLanguage.SYSTEM)
     ): UpdateCheckResult = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("https://api.github.com/repos/$repoSlug/releases/latest")
@@ -126,7 +130,7 @@ object AppUpdateManager {
                     return@withContext UpdateCheckResult.NoReleasesYet
                 }
                 if (!response.isSuccessful) {
-                    return@withContext UpdateCheckResult.Error("GitHub API エラー (${response.code})")
+                    return@withContext UpdateCheckResult.Error(strings.updateGithubApiError(response.code))
                 }
                 val body = response.body?.string().orEmpty()
                 val release = parseLatestApkRelease(body)
@@ -139,13 +143,14 @@ object AppUpdateManager {
                 }
             }
         } catch (e: Exception) {
-            UpdateCheckResult.Error(e.message ?: "ネットワークエラー")
+            UpdateCheckResult.Error(e.message ?: strings.updateNetworkError)
         }
     }
 
     suspend fun downloadAndInstallApk(
         context: Context,
         release: ReleaseInfo,
+        strings: DeckStrings = DeckI18n.strings(AppLanguage.SYSTEM),
         onProgress: (Int) -> Unit
     ): ApkInstallResult {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -167,9 +172,9 @@ object AppUpdateManager {
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IllegalStateException("APKダウンロード失敗 (${response.code})")
+                    throw IllegalStateException(strings.updateApkDownloadFailed(response.code))
                 }
-                val body = response.body ?: throw IllegalStateException("APKデータが空です")
+                val body = response.body ?: throw IllegalStateException(strings.updateApkEmpty)
                 val totalBytes = body.contentLength()
                 var downloaded = 0L
 
@@ -207,7 +212,7 @@ object AppUpdateManager {
             context.startActivity(intent)
             ApkInstallResult.LaunchedInstaller
         } catch (e: Exception) {
-            ApkInstallResult.Error(e.message ?: "インストーラ起動エラー")
+            ApkInstallResult.Error(e.message ?: strings.updateInstallerLaunchError)
         }
     }
 

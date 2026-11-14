@@ -9,6 +9,9 @@ import android.net.NetworkRequest
 import com.antigravity.deck.hardware.DeckNotificationManager
 import com.antigravity.deck.hardware.HapticsController
 import com.antigravity.deck.hardware.NotificationActionBus
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
 import com.antigravity.deck.model.DeckEndpointConfig
@@ -18,6 +21,7 @@ import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.model.ServerEvent
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.network.DeckWebSocketClient
+import com.antigravity.deck.ui.theme.AppThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +37,9 @@ data class DeckSessionSnapshot(
     val connectionStatus: ConnectionStatus = ConnectionStatus.Disconnected,
     val endpointConfig: DeckEndpointConfig = DeckEndpointConfig.usbLocalhost(),
     val notificationPrefs: NotificationPreferences = NotificationPreferences(),
+    val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val backgroundEnabled: Boolean = true,
     val feedbackBanner: String? = null
 )
 
@@ -44,17 +51,25 @@ class DeckSessionController private constructor(
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val haptics = HapticsController(appContext)
     private val notifications = DeckNotificationManager(appContext)
-    private val wsClient = DeckWebSocketClient()
+    private val wsClient = DeckWebSocketClient { strings() }
 
     private val initialEndpoint = loadSavedEndpoint()
     private val initialNotificationPrefs = loadNotificationPrefs()
+    private val initialAppLanguage = loadAppLanguage()
+    private val initialThemeMode = loadThemeMode()
+    private val initialBackgroundEnabled = prefs.getBoolean(KEY_BACKGROUND_ENABLED, true)
     private val _state = MutableStateFlow(
         DeckSessionSnapshot(
             endpointConfig = initialEndpoint,
-            notificationPrefs = initialNotificationPrefs
+            notificationPrefs = initialNotificationPrefs,
+            appLanguage = initialAppLanguage,
+            themeMode = initialThemeMode,
+            backgroundEnabled = initialBackgroundEnabled
         )
     )
     val state: StateFlow<DeckSessionSnapshot> = _state.asStateFlow()
+
+    private fun strings(): DeckStrings = DeckI18n.strings(_state.value.appLanguage)
 
     private var hasReceivedSync = false
 
@@ -83,6 +98,7 @@ class DeckSessionController private constructor(
             }
         }
 
+        notifications.refreshChannels(strings())
         registerNetworkCallback()
         wsClient.connect(initialEndpoint)
     }
@@ -120,6 +136,60 @@ class DeckSessionController private constructor(
             notifyOnError = prefs.getBoolean(KEY_NOTIFY_ERROR, true),
             hapticsEnabled = prefs.getBoolean(KEY_HAPTICS_ENABLED, true)
         )
+    }
+
+    private fun loadAppLanguage(): AppLanguage {
+        return AppLanguage.parse(prefs.getString(KEY_APP_LANGUAGE, null))
+    }
+
+    private fun loadThemeMode(): AppThemeMode {
+        return AppThemeMode.parse(prefs.getString(KEY_THEME_MODE, null))
+    }
+
+    fun isBackgroundServiceEnabled(): Boolean = _state.value.backgroundEnabled
+
+    fun setThemeMode(mode: AppThemeMode) {
+        haptics.triggerSelectionClick()
+        prefs.edit().putString(KEY_THEME_MODE, mode.wireValue).apply()
+        val s = strings()
+        _state.update {
+            it.copy(
+                themeMode = mode,
+                feedbackBanner = s.bannerThemeChanged(s.themeLabel(mode))
+            )
+        }
+    }
+
+    fun setBackgroundServiceEnabled(enabled: Boolean) {
+        haptics.triggerSelectionClick()
+        prefs.edit().putBoolean(KEY_BACKGROUND_ENABLED, enabled).apply()
+        if (enabled) {
+            DeckForegroundService.start(appContext)
+        } else {
+            DeckForegroundService.stop(appContext)
+        }
+        val s = strings()
+        _state.update {
+            it.copy(
+                backgroundEnabled = enabled,
+                feedbackBanner = if (enabled) s.bannerBackgroundStarted else s.bannerBackgroundStopped
+            )
+        }
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        haptics.triggerSelectionClick()
+        prefs.edit().putString(KEY_APP_LANGUAGE, language.wireValue).apply()
+        val updatedStrings = DeckI18n.strings(language)
+        notifications.refreshChannels(updatedStrings)
+        _state.update {
+            it.copy(
+                appLanguage = language,
+                feedbackBanner = updatedStrings.bannerLanguageChanged(language.optionLabel)
+            )
+        }
+        val current = _state.value
+        notifications.updateForegroundNotification(current.session, current.connectionStatus, updatedStrings)
     }
 
     fun updateNotificationPrefs(updated: NotificationPreferences) {
@@ -166,19 +236,19 @@ class DeckSessionController private constructor(
 
     private fun handleNotificationAction(approved: Boolean) {
         haptics.triggerSelectionClick()
+        val s = strings()
         val payload = if (approved) {
             ProtocolCodec.commandApprove()
         } else {
-            ProtocolCodec.commandReject()
+            ProtocolCodec.commandReject(s.rejectReasonFromMobile)
         }
         val sent = wsClient.send(payload)
-        val label = if (approved) "承認" else "拒否"
         _state.update {
             it.copy(
                 feedbackBanner = if (sent) {
-                    "通知から操作を${label}しました"
+                    if (approved) s.bannerApprovedFromNotification else s.bannerRejectedFromNotification
                 } else {
-                    "未接続のため送信できませんでした"
+                    s.bannerNotConnected
                 }
             )
         }
@@ -195,7 +265,7 @@ class DeckSessionController private constructor(
                     if (currentPrefs.shouldVibrate(updated.status)) {
                         triggerStatusHaptics(updated.status)
                     }
-                    notifications.notifySessionTransition(updated, currentPrefs)
+                    notifications.notifySessionTransition(updated, currentPrefs, strings())
                 }
                 hasReceivedSync = true
 
@@ -210,7 +280,7 @@ class DeckSessionController private constructor(
             is ServerEvent.AuthAck -> {
                 if (!event.authenticated) {
                     _state.update {
-                        it.copy(feedbackBanner = event.message ?: "認証トークンが一致しません")
+                        it.copy(feedbackBanner = event.message ?: strings().bannerAuthMismatch)
                     }
                 }
             }
@@ -228,23 +298,28 @@ class DeckSessionController private constructor(
 
     fun buildForegroundNotification(): Notification {
         val current = _state.value
-        return notifications.buildForegroundNotification(current.session, current.connectionStatus)
+        return notifications.buildForegroundNotification(
+            current.session,
+            current.connectionStatus,
+            DeckI18n.strings(current.appLanguage)
+        )
     }
 
     fun updateForegroundNotification(
         session: AgentSession,
         connectionStatus: ConnectionStatus
     ) {
-        notifications.updateForegroundNotification(session, connectionStatus)
+        notifications.updateForegroundNotification(session, connectionStatus, strings())
     }
 
     fun approve() {
         haptics.triggerSelectionClick()
         notifications.cancel()
+        val s = strings()
         val sent = wsClient.send(ProtocolCodec.commandApprove())
         _state.update {
             it.copy(
-                feedbackBanner = if (sent) "承認コマンドを送信しました" else "未接続のため送信できませんでした"
+                feedbackBanner = if (sent) s.bannerApproveSent else s.bannerNotConnected
             )
         }
     }
@@ -252,10 +327,11 @@ class DeckSessionController private constructor(
     fun reject() {
         haptics.triggerSelectionClick()
         notifications.cancel()
-        val sent = wsClient.send(ProtocolCodec.commandReject())
+        val s = strings()
+        val sent = wsClient.send(ProtocolCodec.commandReject(s.rejectReasonFromMobile))
         _state.update {
             it.copy(
-                feedbackBanner = if (sent) "拒否コマンドを送信しました" else "未接続のため送信できませんでした"
+                feedbackBanner = if (sent) s.bannerRejectSent else s.bannerNotConnected
             )
         }
     }
@@ -263,13 +339,14 @@ class DeckSessionController private constructor(
     fun sendPrompt(promptText: String) {
         val trimmed = promptText.trim()
         if (trimmed.isEmpty()) return
+        val s = strings()
         val sent = wsClient.send(ProtocolCodec.commandSendPrompt(trimmed))
         _state.update {
             it.copy(
                 feedbackBanner = if (sent) {
-                    "プロンプト送信: $trimmed"
+                    s.bannerPromptSent(trimmed)
                 } else {
-                    "未接続のため送信できませんでした"
+                    s.bannerNotConnected
                 }
             )
         }
@@ -289,10 +366,11 @@ class DeckSessionController private constructor(
         val trimmed = modelName.trim()
         if (trimmed.isEmpty()) return
         haptics.triggerSelectionClick()
+        val s = strings()
         _state.update { snapshot ->
             snapshot.copy(
                 session = snapshot.session.copy(modelName = trimmed),
-                feedbackBanner = "モデルを $trimmed に切り替えました"
+                feedbackBanner = s.bannerModelSwitched(trimmed)
             )
         }
         wsClient.send(ProtocolCodec.commandSetModel(trimmed))
@@ -304,7 +382,7 @@ class DeckSessionController private constructor(
         val preset = DeckEndpointConfig.usbLocalhost()
         saveEndpoint(preset)
         wsClient.connect(preset)
-        _state.update { it.copy(feedbackBanner = "USB localhost:8765 へ接続を試行しています") }
+        _state.update { it.copy(feedbackBanner = strings().bannerConnectingUsb) }
     }
 
     fun applyPairingRawInput(raw: String): Boolean {
@@ -314,20 +392,21 @@ class DeckSessionController private constructor(
         saveEndpoint(config)
         wsClient.connect(config)
         _state.update {
-            it.copy(feedbackBanner = "${config.label} へ接続しています")
+            it.copy(feedbackBanner = strings().bannerConnectingEndpoint(config.label))
         }
         return true
     }
 
     fun triggerSimulation() {
         haptics.triggerSelectionClick()
+        val s = strings()
         val sent = wsClient.send(ProtocolCodec.commandSimulateLifecycle())
         _state.update {
             it.copy(
                 feedbackBanner = if (sent) {
-                    "テストライフサイクルを開始しました"
+                    s.bannerSimulationStarted
                 } else {
-                    "未接続のためシミュレーションを開始できませんでした"
+                    s.bannerSimulationNotConnected
                 }
             )
         }
@@ -352,6 +431,9 @@ class DeckSessionController private constructor(
         private const val KEY_NOTIFY_DONE = "notify_done"
         private const val KEY_NOTIFY_ERROR = "notify_error"
         private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
+        private const val KEY_APP_LANGUAGE = "app_language"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_BACKGROUND_ENABLED = "background_enabled"
 
         @Volatile
         private var instance: DeckSessionController? = null

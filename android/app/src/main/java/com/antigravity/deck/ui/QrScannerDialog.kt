@@ -48,6 +48,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.antigravity.deck.i18n.LocalDeckStrings
 import com.antigravity.deck.model.DeckEndpointConfig
 import com.antigravity.deck.ui.theme.DeckColors
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -64,6 +65,7 @@ fun QrPairingDialog(
     onSubmitRawPairing: (String) -> Boolean,
     onConnectUsbPreset: () -> Unit
 ) {
+    val s = LocalDeckStrings.current
     val context = LocalContext.current
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -102,12 +104,12 @@ fun QrPairingDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "PCペアリング接続",
+                    text = s.pairingTitle,
                     style = MaterialTheme.typography.titleMedium,
                     color = DeckColors.TextPrimary
                 )
                 Text(
-                    text = "拡張機能の Show Pairing QR をスキャンするか、接続URLを入力してください",
+                    text = s.pairingDesc,
                     style = MaterialTheme.typography.bodyMedium,
                     color = DeckColors.TextSecondary
                 )
@@ -126,7 +128,7 @@ fun QrPairingDialog(
                         QrCameraPreview(
                             onQrDetected = { raw ->
                                 if (!onSubmitRawPairing(raw)) {
-                                    errorMessage = "QRコードの接続形式を解析できませんでした"
+                                    errorMessage = s.pairingQrParseError
                                 }
                             }
                         )
@@ -136,13 +138,13 @@ fun QrPairingDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "QR読み取りにはカメラ権限が必要です",
+                                text = s.pairingCameraPermissionNeeded,
                                 color = DeckColors.TextSecondary
                             )
                             OutlinedButton(
                                 onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }
                             ) {
-                                Text("カメラ権限を許可")
+                                Text(s.pairingGrantCameraPermission)
                             }
                         }
                     }
@@ -154,7 +156,7 @@ fun QrPairingDialog(
                         manualInput = it
                         errorMessage = null
                     },
-                    label = { Text("WebSocket URL または IP:Port") },
+                    label = { Text(s.pairingUrlFieldLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -183,13 +185,13 @@ fun QrPairingDialog(
                     Button(
                         onClick = {
                             if (!onSubmitRawPairing(manualInput)) {
-                                errorMessage = "接続先を認識できませんでした"
+                                errorMessage = s.pairingInvalidEndpoint
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DeckColors.AccentBlue),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("接続する", fontWeight = FontWeight.Bold)
+                        Text(s.pairingConnectButton, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -199,7 +201,7 @@ fun QrPairingDialog(
                 ) {
                     Spacer(modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = onDismiss) {
-                        Text("閉じる")
+                        Text(s.closeButton)
                     }
                 }
             }

@@ -1,5 +1,8 @@
 package com.antigravity.deck.network
 
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import com.antigravity.deck.model.DeckEndpointConfig
 import com.antigravity.deck.model.ProtocolCodec
 import com.antigravity.deck.model.ServerEvent
@@ -32,7 +35,9 @@ sealed interface ConnectionStatus {
 }
 
 // OkHttpによる自動再接続機能付きWebSocketクライアント
-class DeckWebSocketClient {
+class DeckWebSocketClient(
+    private val stringsProvider: () -> DeckStrings = { DeckI18n.strings(AppLanguage.SYSTEM) }
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -98,7 +103,7 @@ class DeckWebSocketClient {
         _connectionStatus.value = if (retryCount == 0) {
             ConnectionStatus.Connecting
         } else {
-            ConnectionStatus.Reconnecting(retryCount, "再接続試行中")
+            ConnectionStatus.Reconnecting(retryCount, stringsProvider().wsReconnectingReason)
         }
 
         val request = Request.Builder()
@@ -132,13 +137,13 @@ class DeckWebSocketClient {
                     _connectionStatus.value = ConnectionStatus.Disconnected
                     return
                 }
-                scheduleReconnect(config, reason.ifEmpty { "接続が閉じられました" })
+                scheduleReconnect(config, reason.ifEmpty { stringsProvider().wsClosedReason })
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (myEpoch != connectionEpoch) return
                 activeSocket = null
-                scheduleReconnect(config, t.message ?: "ネットワークエラー")
+                scheduleReconnect(config, t.message ?: stringsProvider().wsNetworkError)
             }
         })
     }

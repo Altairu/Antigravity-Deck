@@ -6,18 +6,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,22 +36,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -89,11 +86,14 @@ import androidx.core.content.ContextCompat
 import com.antigravity.deck.DeckUiState
 import com.antigravity.deck.UpdateUiState
 import com.antigravity.deck.hardware.SpeechUiState
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.LocalDeckStrings
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
 import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
+import com.antigravity.deck.ui.theme.AppThemeMode
 import com.antigravity.deck.ui.theme.DeckColors
 
 @Composable
@@ -111,13 +111,18 @@ fun DeckCommandCenterScreen(
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationSettings: () -> Unit,
     onUpdateNotificationPrefs: (NotificationPreferences) -> Unit,
+    onSetAppLanguage: (AppLanguage) -> Unit,
+    onSetThemeMode: (AppThemeMode) -> Unit,
+    onSetBackgroundServiceEnabled: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onInstallAvailableUpdate: () -> Unit,
     onTriggerSimulation: () -> Unit,
     onStartPushToTalk: () -> Unit,
     onStopPushToTalk: () -> Unit
 ) {
+    val s = LocalDeckStrings.current
     val context = LocalContext.current
+
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -148,26 +153,7 @@ fun DeckCommandCenterScreen(
         hasNotificationPermission = granted
     }
 
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-
-    var showTextComposer by remember { mutableStateOf(true) }
     var textPromptDraft by remember { mutableStateOf("") }
-
-    // 思考中カード向けのパルスアニメーションを共有する
-    val infiniteTransition = rememberInfiniteTransition(label = "deck_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -177,61 +163,58 @@ fun DeckCommandCenterScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 接続状態とワンタップ接続バー
-            TopConnectionBar(
+            TopHeaderBar(
                 connectionStatus = uiState.connectionStatus,
                 hasAvailableUpdate = uiState.updateState.availableUpdate != null,
                 onConnectUsbPreset = onConnectUsbPreset,
                 onOpenPairingSheet = onOpenPairingSheet,
-                onOpenNotificationSettings = onOpenNotificationSettings,
-                onTriggerSimulation = onTriggerSimulation
+                onOpenSettings = onOpenNotificationSettings
             )
 
-            // 通知未許可時のコンパクトな案内バー
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+            if (!hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable {
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         },
-                    color = Color(0xFF332709),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, DeckColors.StatusApproval)
+                    color = DeckColors.ApprovalBannerBackground,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, DeckColors.StatusApproval.copy(alpha = 0.4f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.NotificationsOff,
-                            contentDescription = "通知許可",
+                            contentDescription = s.notificationPermissionDesc,
                             tint = DeckColors.StatusApproval,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "通知を受け取るにはタップして通知権限を許可してください",
+                            text = s.notificationPermissionPrompt,
                             color = DeckColors.StatusApproval,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
             }
 
-            // 上部: 単一エージェント状態カード
-            AgentStatusHeroCard(
+            AgentStatusCard(
                 session = uiState.session,
-                thinkingPulseAlpha = pulseAlpha
+                availableModels = uiState.availableModels,
+                onSetModel = onSetModel,
+                onSetReasoningEffort = onSetReasoningEffort
             )
 
-            // 中部: Approval Preview と状態ログ領域
-            ApprovalPreviewPanel(
+            ResponsePanel(
                 session = uiState.session,
                 speechState = uiState.speechState,
                 feedbackBanner = uiState.feedbackBanner,
@@ -240,27 +223,25 @@ fun DeckCommandCenterScreen(
                     .fillMaxWidth()
             )
 
-            // 下部: Command Dock
-            CommandDock(
-                session = uiState.session,
-                availableModels = uiState.availableModels,
-                speechState = uiState.speechState,
-                hasAudioPermission = hasAudioPermission,
-                showTextComposer = showTextComposer,
-                textPromptDraft = textPromptDraft,
-                onTextDraftChange = { textPromptDraft = it },
-                onToggleTextComposer = { showTextComposer = !showTextComposer },
-                onSendTextPrompt = {
-                    val prompt = textPromptDraft.trim()
-                    if (prompt.isNotEmpty()) {
-                        onSendPrompt(prompt)
+            if (uiState.session.status == AgentStatus.WAITING_APPROVAL) {
+                ApprovalActionRow(
+                    onApprove = onApprove,
+                    onReject = onReject
+                )
+            }
+
+            PromptInputBar(
+                draft = textPromptDraft,
+                onDraftChange = { textPromptDraft = it },
+                onSendPrompt = {
+                    val trimmed = textPromptDraft.trim()
+                    if (trimmed.isNotEmpty()) {
+                        onSendPrompt(trimmed)
                         textPromptDraft = ""
                     }
                 },
-                onApprove = onApprove,
-                onReject = onReject,
-                onSetReasoningEffort = onSetReasoningEffort,
-                onSetModel = onSetModel,
+                speechState = uiState.speechState,
+                hasAudioPermission = hasAudioPermission,
                 onRequestAudioPermission = {
                     audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 },
@@ -280,161 +261,128 @@ fun DeckCommandCenterScreen(
     }
 
     if (uiState.showNotificationSettings) {
-        NotificationSettingsDialog(
+        SettingsDialog(
             prefs = uiState.notificationPrefs,
+            appLanguage = uiState.appLanguage,
+            themeMode = uiState.themeMode,
+            backgroundEnabled = uiState.backgroundEnabled,
             updateState = uiState.updateState,
             onUpdate = onUpdateNotificationPrefs,
+            onSetAppLanguage = onSetAppLanguage,
+            onSetThemeMode = onSetThemeMode,
+            onSetBackgroundServiceEnabled = onSetBackgroundServiceEnabled,
             onCheckForUpdates = onCheckForUpdates,
             onInstallAvailableUpdate = onInstallAvailableUpdate,
+            onTriggerSimulation = onTriggerSimulation,
             onDismiss = onDismissNotificationSettings
         )
     }
 }
 
 @Composable
-private fun TopConnectionBar(
+private fun TopHeaderBar(
     connectionStatus: ConnectionStatus,
     hasAvailableUpdate: Boolean,
     onConnectUsbPreset: () -> Unit,
     onOpenPairingSheet: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onTriggerSimulation: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
+    val s = LocalDeckStrings.current
     val (dotColor, statusText) = when (connectionStatus) {
         is ConnectionStatus.Connected -> DeckColors.StatusDone to connectionStatus.endpoint.label
-        ConnectionStatus.Connecting -> DeckColors.StatusThinking to "接続中..."
-        is ConnectionStatus.Reconnecting -> DeckColors.StatusApproval to "再接続 (${connectionStatus.attempt})"
-        ConnectionStatus.Disconnected -> DeckColors.StatusError to "未接続"
+        ConnectionStatus.Connecting -> DeckColors.StatusThinking to s.connConnecting
+        is ConnectionStatus.Reconnecting -> DeckColors.StatusApproval to "${s.connReconnectingPrefix} (${connectionStatus.attempt})"
+        ConnectionStatus.Disconnected -> DeckColors.StatusError to s.connDisconnected
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(DeckColors.Surface)
-            .border(1.dp, DeckColors.BorderMuted, RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(10.dp)
+                .size(9.dp)
                 .clip(CircleShape)
                 .background(dotColor)
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Antigravity Deck",
-                style = MaterialTheme.typography.labelMedium,
                 color = DeckColors.TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = statusText,
-                style = MaterialTheme.typography.labelMedium,
                 color = DeckColors.TextSecondary,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        CompactActionChip(
-            label = "USB",
-            icon = Icons.Rounded.Usb,
-            tint = DeckColors.StatusThinking,
-            onClick = onConnectUsbPreset
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        CompactActionChip(
-            label = "QR",
-            icon = Icons.Rounded.QrCodeScanner,
-            tint = DeckColors.TextPrimary,
-            onClick = onOpenPairingSheet
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        CompactActionChip(
-            label = "Sim",
-            icon = Icons.Rounded.PlayArrow,
-            tint = DeckColors.StatusApproval,
-            onClick = onTriggerSimulation
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Surface(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpenNotificationSettings),
-            color = DeckColors.SurfaceElevated,
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, DeckColors.BorderMuted)
+        IconButton(
+            onClick = onConnectUsbPreset,
+            modifier = Modifier.size(38.dp)
         ) {
-            Box(
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
-                contentAlignment = Alignment.Center
+            Icon(
+                imageVector = Icons.Rounded.Usb,
+                contentDescription = "USB",
+                tint = DeckColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        IconButton(
+            onClick = onOpenPairingSheet,
+            modifier = Modifier.size(38.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.QrCodeScanner,
+                contentDescription = "QR",
+                tint = DeckColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Box {
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Notifications,
-                    contentDescription = "設定と通知",
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = s.settingsButtonDesc,
                     tint = DeckColors.TextPrimary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
-                if (hasAvailableUpdate) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(DeckColors.StatusThinking)
-                    )
-                }
+            }
+            if (hasAvailableUpdate) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 6.dp, end = 6.dp)
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(DeckColors.AccentBlue)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun CompactActionChip(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
-        color = DeckColors.SurfaceElevated,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, DeckColors.BorderMuted)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(15.dp)
-            )
-            Text(
-                text = label,
-                color = tint,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
-
-@Composable
-private fun AgentStatusHeroCard(
+private fun AgentStatusCard(
     session: AgentSession,
-    thinkingPulseAlpha: Float
+    availableModels: List<String>,
+    onSetModel: (String) -> Unit,
+    onSetReasoningEffort: (ReasoningEffort) -> Unit
 ) {
-    val baseAccent = when (session.status) {
+    val s = LocalDeckStrings.current
+    val statusColor = when (session.status) {
         AgentStatus.IDLE -> DeckColors.StatusIdle
         AgentStatus.THINKING -> DeckColors.StatusThinking
         AgentStatus.WAITING_APPROVAL -> DeckColors.StatusApproval
@@ -442,47 +390,166 @@ private fun AgentStatusHeroCard(
         AgentStatus.ERROR -> DeckColors.StatusError
     }
 
-    val targetBackground = when (session.status) {
-        AgentStatus.IDLE -> DeckColors.Surface
-        AgentStatus.THINKING -> Color(0xFF0E2942)
-        AgentStatus.WAITING_APPROVAL -> Color(0xFF332709)
-        AgentStatus.DONE -> Color(0xFF0B2E22)
-        AgentStatus.ERROR -> Color(0xFF381216)
-    }
-
-    val targetBorder = when (session.status) {
-        AgentStatus.THINKING -> baseAccent.copy(alpha = thinkingPulseAlpha)
-        AgentStatus.IDLE -> DeckColors.BorderMuted
-        else -> baseAccent
-    }
-
-    val animatedBg by animateColorAsState(
-        targetValue = targetBackground,
-        animationSpec = tween(durationMillis = 280),
-        label = "hero_card_bg"
-    )
-    val animatedBorder by animateColorAsState(
-        targetValue = targetBorder,
-        animationSpec = tween(durationMillis = 220),
-        label = "hero_card_border"
-    )
-
-    val borderWidth = if (session.status == AgentStatus.WAITING_APPROVAL || session.status == AgentStatus.THINKING) {
-        2.dp
-    } else {
-        1.dp
+    var modelMenuExpanded by remember { mutableStateOf(false) }
+    val modelChoices = remember(availableModels, session.modelName) {
+        if (availableModels.contains(session.modelName)) {
+            availableModels
+        } else {
+            listOf(session.modelName) + availableModels
+        }
     }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = animatedBg,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(borderWidth, animatedBorder)
+        color = DeckColors.Surface,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, DeckColors.BorderMuted)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    color = statusColor.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = s.statusLabel(session.status),
+                        color = statusColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Text(
+                    text = session.title,
+                    color = DeckColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { modelMenuExpanded = true },
+                        color = DeckColors.SurfaceElevated,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = session.modelName,
+                                color = DeckColors.TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.ExpandMore,
+                                contentDescription = null,
+                                tint = DeckColors.TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = modelMenuExpanded,
+                        onDismissRequest = { modelMenuExpanded = false }
+                    ) {
+                        modelChoices.forEach { model ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = model,
+                                        fontWeight = if (model == session.modelName) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    modelMenuExpanded = false
+                                    onSetModel(model)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ReasoningEffort.entries.forEach { effort ->
+                        val selected = effort == session.reasoningEffort
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onSetReasoningEffort(effort) },
+                            color = if (selected) DeckColors.AccentBlue else DeckColors.SurfaceElevated,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = effort.label,
+                                color = if (selected) Color.White else DeckColors.TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResponsePanel(
+    session: AgentSession,
+    speechState: SpeechUiState,
+    feedbackBanner: String?,
+    modifier: Modifier = Modifier
+) {
+    val s = LocalDeckStrings.current
+    val isWaiting = session.status == AgentStatus.WAITING_APPROVAL
+    val hasResponse = !session.lastResponse.isNullOrBlank() && session.approvalPreview.isNullOrBlank()
+
+    Surface(
+        modifier = modifier,
+        color = DeckColors.Surface,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, DeckColors.BorderMuted)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -490,141 +557,58 @@ private fun AgentStatusHeroCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val dotAlpha = if (session.status == AgentStatus.THINKING) thinkingPulseAlpha else 1f
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(baseAccent.copy(alpha = dotAlpha))
-                    )
-                    Text(
-                        text = session.status.label,
-                        color = baseAccent,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Surface(
-                    color = DeckColors.Background.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, DeckColors.BorderMuted)
-                ) {
-                    Text(
-                        text = "${session.modelName} / ${session.reasoningEffort.label}",
-                        color = DeckColors.TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = session.title,
-                color = DeckColors.TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 21.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun ApprovalPreviewPanel(
-    session: AgentSession,
-    speechState: SpeechUiState,
-    feedbackBanner: String?,
-    modifier: Modifier = Modifier
-) {
-    val isWaiting = session.status == AgentStatus.WAITING_APPROVAL
-    val isWaitingApprovalWithPreview = isWaiting && !session.approvalPreview.isNullOrBlank()
-    val hasResponse = !isWaitingApprovalWithPreview &&
-        session.approvalPreview.isNullOrBlank() &&
-        !session.lastResponse.isNullOrBlank()
-    val borderColor by animateColorAsState(
-        targetValue = if (isWaiting) DeckColors.StatusApproval else DeckColors.BorderMuted,
-        animationSpec = tween(durationMillis = 250),
-        label = "preview_border"
-    )
-
-    Surface(
-        modifier = modifier,
-        color = DeckColors.Surface,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(if (isWaiting) 1.5.dp else 1.dp, borderColor)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = when {
-                    isWaitingApprovalWithPreview || isWaiting -> "承認待ちプレビュー"
-                    hasResponse -> "Antigravity からの返答"
-                    else -> "エージェント出力 / コンテキスト"
-                },
-                color = when {
-                    isWaiting -> DeckColors.StatusApproval
-                    hasResponse -> DeckColors.StatusDone
-                    else -> DeckColors.TextSecondary
-                },
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // 音声認識中や操作ログがある場合のインラインステータス
-            val statusMessage = when {
-                speechState.isListening -> "音声入力中: ${speechState.partialText.ifEmpty { "..." }}"
-                speechState.isFinalizing -> speechState.statusHint ?: "確定中..."
-                !feedbackBanner.isNullOrEmpty() -> feedbackBanner
-                !speechState.statusHint.isNullOrEmpty() -> speechState.statusHint
-                else -> null
-            }
-            if (statusMessage != null) {
                 Text(
-                    text = statusMessage,
-                    color = if (speechState.isListening) DeckColors.StatusThinking else DeckColors.TextSecondary,
-                    fontSize = 11.sp,
+                    text = when {
+                        isWaiting -> s.sectionWaitingApproval
+                        hasResponse -> s.sectionAgentResponse
+                        else -> s.sectionAgentOutput
+                    },
+                    color = if (isWaiting) DeckColors.StatusApproval else DeckColors.TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                val statusMessage = when {
+                    speechState.isListening -> s.speechOverlayListening(speechState.partialText.ifEmpty { "..." })
+                    speechState.isFinalizing -> speechState.statusHint ?: s.speechOverlayFinalizingFallback
+                    !feedbackBanner.isNullOrEmpty() -> feedbackBanner
+                    !speechState.statusHint.isNullOrEmpty() -> speechState.statusHint
+                    else -> null
+                }
+                if (statusMessage != null) {
+                    Text(
+                        text = statusMessage,
+                        color = if (speechState.isListening) DeckColors.AccentBlue else DeckColors.TextSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
             }
 
-            // 返答テキストまたは承認待ちプレビューのスクロール表示領域
+            HorizontalDivider(color = DeckColors.BorderMuted)
+
             val scrollState = rememberScrollState()
             LaunchedEffect(session.lastResponse, session.approvalPreview) {
                 scrollState.scrollTo(0)
             }
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF060A12))
-                    .padding(10.dp)
                     .verticalScroll(scrollState)
             ) {
                 val previewContent = when {
                     !session.approvalPreview.isNullOrBlank() -> session.approvalPreview
                     !session.lastResponse.isNullOrBlank() -> session.lastResponse
-                    session.status == AgentStatus.THINKING -> "エージェントが思考およびツール実行を進めています..."
-                    session.status == AgentStatus.DONE -> "タスクは正常に完了しました。"
-                    session.status == AgentStatus.ERROR -> "エラー状態になりました。承認または新規プロンプトを送信してください。"
-                    else -> "承認待ちのコマンドや差分はありません。下部の入力欄またはマイクボタン長押しからプロンプトを送信できます。"
+                    session.status == AgentStatus.THINKING -> s.emptyThinking
+                    session.status == AgentStatus.DONE -> s.emptyDone
+                    session.status == AgentStatus.ERROR -> s.emptyError
+                    else -> s.emptyIdle
                 }
                 val isMonospace = !session.approvalPreview.isNullOrBlank() || session.lastResponse.isNullOrBlank()
                 if (!isMonospace && !session.lastResponse.isNullOrBlank()) {
@@ -635,14 +619,18 @@ private fun ApprovalPreviewPanel(
                 } else {
                     Text(
                         text = previewContent,
-                        color = if (isWaiting || !session.lastResponse.isNullOrBlank()) {
-                            DeckColors.TextPrimary
-                        } else {
+                        color = if (session.approvalPreview.isNullOrBlank()) {
                             DeckColors.TextSecondary
+                        } else {
+                            DeckColors.TextPrimary
                         },
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
+                        fontFamily = if (!session.approvalPreview.isNullOrBlank()) {
+                            FontFamily.Monospace
+                        } else {
+                            FontFamily.Default
+                        },
+                        fontSize = if (!session.approvalPreview.isNullOrBlank()) 12.sp else 13.5.sp,
+                        lineHeight = 20.sp
                     )
                 }
             }
@@ -651,347 +639,192 @@ private fun ApprovalPreviewPanel(
 }
 
 @Composable
-private fun CommandDock(
-    session: AgentSession,
-    availableModels: List<String>,
+private fun ApprovalActionRow(
+    onApprove: () -> Unit,
+    onReject: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = onReject,
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, DeckColors.RejectRed),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = DeckColors.RejectRed),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Reject",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+        }
+
+        Button(
+            onClick = onApprove,
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = DeckColors.ApproveGreen,
+                contentColor = Color.White
+            ),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Approve",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun PromptInputBar(
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onSendPrompt: () -> Unit,
     speechState: SpeechUiState,
     hasAudioPermission: Boolean,
-    showTextComposer: Boolean,
-    textPromptDraft: String,
-    onTextDraftChange: (String) -> Unit,
-    onToggleTextComposer: () -> Unit,
-    onSendTextPrompt: () -> Unit,
-    onApprove: () -> Unit,
-    onReject: () -> Unit,
-    onSetReasoningEffort: (ReasoningEffort) -> Unit,
-    onSetModel: (String) -> Unit,
     onRequestAudioPermission: () -> Unit,
     onStartPushToTalk: () -> Unit,
     onStopPushToTalk: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(DeckColors.Surface)
-            .border(1.dp, DeckColors.BorderMuted, RoundedCornerShape(14.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // チャットプロンプト入力行
-        if (showTextComposer) {
-            val hasDraft = textPromptDraft.isNotBlank()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = textPromptDraft,
-                    onValueChange = onTextDraftChange,
-                    placeholder = {
-                        Text(
-                            text = "Antigravity へプロンプトを送信",
-                            color = DeckColors.TextSecondary,
-                            fontSize = 13.sp
-                        )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSendTextPrompt() }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = DeckColors.TextPrimary,
-                        unfocusedTextColor = DeckColors.TextPrimary,
-                        focusedContainerColor = DeckColors.Background,
-                        unfocusedContainerColor = DeckColors.Background,
-                        focusedBorderColor = DeckColors.StatusThinking,
-                        unfocusedBorderColor = DeckColors.BorderMuted,
-                        cursorColor = DeckColors.StatusThinking
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                FilledIconButton(
-                    onClick = onSendTextPrompt,
-                    enabled = hasDraft,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = DeckColors.AccentBlue,
-                        contentColor = Color.White,
-                        disabledContainerColor = DeckColors.SurfaceElevated,
-                        disabledContentColor = DeckColors.TextSecondary
-                    ),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "送信"
-                    )
-                }
-            }
-        }
+    val s = LocalDeckStrings.current
+    val hasDraft = draft.isNotBlank()
 
-        // Approve / Reject 大型アクションボタン
-        val isWaitingApproval = session.status == AgentStatus.WAITING_APPROVAL
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onReject,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isWaitingApproval) DeckColors.RejectRed else Color(0xFF4C1D24),
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(vertical = 12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-            ) {
-                Icon(Icons.Rounded.Close, contentDescription = "Reject", modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Reject", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-
-            Button(
-                onClick = onApprove,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isWaitingApproval) DeckColors.ApproveGreen else Color(0xFF144235),
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(vertical = 12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-            ) {
-                Icon(Icons.Rounded.Check, contentDescription = "Approve", modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Approve", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-        }
-
-        // Push-to-Talk マイクボタンとキーボード切り替え
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onToggleTextComposer),
-                color = DeckColors.SurfaceElevated,
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, DeckColors.BorderMuted)
-            ) {
-                Box(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Keyboard,
-                        contentDescription = "テキスト入力切り替え",
-                        tint = if (showTextComposer) DeckColors.StatusThinking else DeckColors.TextSecondary
-                    )
-                }
-            }
-
-            PushToTalkButton(
-                isListening = speechState.isListening,
-                hasAudioPermission = hasAudioPermission,
-                onRequestPermission = onRequestAudioPermission,
-                onPressStart = onStartPushToTalk,
-                onPressRelease = onStopPushToTalk,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-            )
-        }
-
-        // AIモデル切り替えセレクター
-        ModelSelectorRow(
-            models = availableModels,
-            selectedModel = session.modelName,
-            onSelectModel = onSetModel
-        )
-
-        // Reasoning Effort セレクター (low / medium / high / xhigh)
-        ReasoningEffortSelector(
-            selected = session.reasoningEffort,
-            onSelect = onSetReasoningEffort
-        )
-    }
-}
-
-@Composable
-private fun PushToTalkButton(
-    isListening: Boolean,
-    hasAudioPermission: Boolean,
-    onRequestPermission: () -> Unit,
-    onPressStart: () -> Unit,
-    onPressRelease: () -> Unit,
-    modifier: Modifier = Modifier
-) {
     val currentHasPermission by rememberUpdatedState(hasAudioPermission)
-    val currentRequestPermission by rememberUpdatedState(onRequestPermission)
-    val currentOnStart by rememberUpdatedState(onPressStart)
-    val currentOnRelease by rememberUpdatedState(onPressRelease)
+    val currentRequestPermission by rememberUpdatedState(onRequestAudioPermission)
+    val currentOnStart by rememberUpdatedState(onStartPushToTalk)
+    val currentOnRelease by rememberUpdatedState(onStopPushToTalk)
 
-    val bgColor by animateColorAsState(
-        targetValue = if (isListening) DeckColors.AccentBlue else DeckColors.SurfaceElevated,
+    val micBg by animateColorAsState(
+        targetValue = if (speechState.isListening) DeckColors.AccentBlue else DeckColors.Surface,
         animationSpec = tween(durationMillis = 150),
-        label = "ptt_bg"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (isListening) DeckColors.StatusThinking else DeckColors.BorderMuted,
-        animationSpec = tween(durationMillis = 150),
-        label = "ptt_border"
+        label = "mic_bg"
     )
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
-            .border(1.5.dp, borderColor, RoundedCornerShape(12.dp))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        if (!currentHasPermission) {
-                            currentRequestPermission()
-                            return@detectTapGestures
-                        }
-                        currentOnStart()
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            currentOnRelease()
-                        }
-                    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = onDraftChange,
+            placeholder = {
+                Text(
+                    text = if (speechState.isListening) s.pttRecording else s.promptPlaceholder,
+                    color = DeckColors.TextSecondary,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             },
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Mic,
-                contentDescription = "Push to Talk",
-                tint = if (isListening) Color.White else DeckColors.StatusThinking
-            )
-            Text(
-                text = when {
-                    !hasAudioPermission -> "マイク権限を許可して音声入力"
-                    isListening -> "録音中... 指を離すと送信"
-                    else -> "長押しで音声プロンプト送信"
-                },
-                color = if (isListening) Color.White else DeckColors.TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
-        }
-    }
-}
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSendPrompt() }),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = DeckColors.TextPrimary,
+                unfocusedTextColor = DeckColors.TextPrimary,
+                focusedContainerColor = DeckColors.Surface,
+                unfocusedContainerColor = DeckColors.Surface,
+                focusedBorderColor = DeckColors.AccentBlue,
+                unfocusedBorderColor = DeckColors.BorderMuted,
+                cursorColor = DeckColors.AccentBlue
+            ),
+            modifier = Modifier.weight(1f)
+        )
 
-@Composable
-private fun ModelSelectorRow(
-    models: List<String>,
-    selectedModel: String,
-    onSelectModel: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        models.forEach { model ->
-            val isActive = model.equals(selectedModel, ignoreCase = true)
-            val bg by animateColorAsState(
-                targetValue = if (isActive) DeckColors.AccentBlue else DeckColors.Background,
-                animationSpec = tween(durationMillis = 180),
-                label = "model_bg_$model"
-            )
-            val borderColor by animateColorAsState(
-                targetValue = if (isActive) DeckColors.StatusThinking else DeckColors.BorderMuted,
-                animationSpec = tween(durationMillis = 180),
-                label = "model_border_$model"
-            )
+        if (hasDraft) {
+            FilledIconButton(
+                onClick = onSendPrompt,
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = DeckColors.AccentBlue,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = s.sendButtonDesc
+                )
+            }
+        } else {
             Surface(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onSelectModel(model) },
-                color = bg,
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, borderColor)
-            ) {
-                Text(
-                    text = model,
-                    color = if (isActive) Color.White else DeckColors.TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                if (!currentHasPermission) {
+                                    currentRequestPermission()
+                                    return@detectTapGestures
+                                }
+                                currentOnStart()
+                                try {
+                                    tryAwaitRelease()
+                                } finally {
+                                    currentOnRelease()
+                                }
+                            }
+                        )
+                    },
+                color = micBg,
+                shape = CircleShape,
+                border = BorderStroke(
+                    1.dp,
+                    if (speechState.isListening) DeckColors.AccentBlue else DeckColors.BorderMuted
                 )
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Mic,
+                        contentDescription = s.pttHoldToSpeak,
+                        tint = if (speechState.isListening) Color.White else DeckColors.TextPrimary
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ReasoningEffortSelector(
-    selected: ReasoningEffort,
-    onSelect: (ReasoningEffort) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(DeckColors.Background)
-            .border(1.dp, DeckColors.BorderMuted, RoundedCornerShape(10.dp))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        ReasoningEffort.entries.forEach { effort ->
-            val isActive = effort == selected
-            val bg by animateColorAsState(
-                targetValue = if (isActive) DeckColors.AccentBlue else Color.Transparent,
-                animationSpec = tween(durationMillis = 180),
-                label = "effort_bg_${effort.wireValue}"
-            )
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(bg)
-                    .clickable { onSelect(effort) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = effort.label,
-                    color = if (isActive) Color.White else DeckColors.TextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun NotificationSettingsDialog(
+private fun SettingsDialog(
     prefs: NotificationPreferences,
+    appLanguage: AppLanguage,
+    themeMode: AppThemeMode,
+    backgroundEnabled: Boolean,
     updateState: UpdateUiState,
     onUpdate: (NotificationPreferences) -> Unit,
+    onSetAppLanguage: (AppLanguage) -> Unit,
+    onSetThemeMode: (AppThemeMode) -> Unit,
+    onSetBackgroundServiceEnabled: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onInstallAvailableUpdate: () -> Unit,
+    onTriggerSimulation: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val s = LocalDeckStrings.current
+    val resolvedLangLabel = appLanguage.resolve().optionLabel
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
@@ -999,75 +832,114 @@ private fun NotificationSettingsDialog(
         textContentColor = DeckColors.TextPrimary,
         title = {
             Text(
-                text = "通知とアップデート設定",
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
+                text = s.settingsDialogTitle,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp
             )
         },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                NotificationSettingRow(
-                    title = "承認待ちの通知",
-                    description = "コマンド実行やファイル編集の確認待ちを通知",
+                SettingSwitchRow(
+                    title = s.settingBackgroundTitle,
+                    description = s.settingBackgroundDesc,
+                    checked = backgroundEnabled,
+                    onCheckedChange = onSetBackgroundServiceEnabled
+                )
+
+                HorizontalDivider(color = DeckColors.BorderMuted)
+
+                Text(
+                    text = s.themeSectionTitle,
+                    color = DeckColors.TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                SegmentedOptionRow(
+                    options = AppThemeMode.entries.map { it to s.themeLabel(it) },
+                    selected = themeMode,
+                    onSelect = onSetThemeMode
+                )
+
+                Text(
+                    text = s.languageSectionTitle,
+                    color = DeckColors.TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                SegmentedOptionRow(
+                    options = AppLanguage.entries.map { it to it.optionLabel },
+                    selected = appLanguage,
+                    onSelect = onSetAppLanguage
+                )
+                if (appLanguage == AppLanguage.SYSTEM) {
+                    Text(
+                        text = s.languageSystemResolvedNote(resolvedLangLabel),
+                        color = DeckColors.TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+
+                HorizontalDivider(color = DeckColors.BorderMuted)
+
+                SettingSwitchRow(
+                    title = s.settingNotifyApprovalTitle,
+                    description = s.settingNotifyApprovalDesc,
                     checked = prefs.notifyOnApproval,
                     onCheckedChange = {
                         onUpdate(prefs.copy(notifyOnApproval = it))
                     }
                 )
-                NotificationSettingRow(
-                    title = "承認通知にプレビュー表示",
-                    description = "承認待ち通知の中に実行コマンドや差分詳細を含める",
+                SettingSwitchRow(
+                    title = s.settingNotifyPreviewTitle,
+                    description = s.settingNotifyPreviewDesc,
                     checked = prefs.showApprovalPreviewInNotification,
                     enabled = prefs.notifyOnApproval,
                     onCheckedChange = {
                         onUpdate(prefs.copy(showApprovalPreviewInNotification = it))
                     }
                 )
-                NotificationSettingRow(
-                    title = "会話終了の通知",
-                    description = "エージェントの応答やタスク完了時に通知",
+                SettingSwitchRow(
+                    title = s.settingNotifyDoneTitle,
+                    description = s.settingNotifyDoneDesc,
                     checked = prefs.notifyOnDone,
                     onCheckedChange = {
                         onUpdate(prefs.copy(notifyOnDone = it))
                     }
                 )
-                NotificationSettingRow(
-                    title = "エラー発生の通知",
-                    description = "ツールエラーや異常終了時に通知",
+                SettingSwitchRow(
+                    title = s.settingNotifyErrorTitle,
+                    description = s.settingNotifyErrorDesc,
                     checked = prefs.notifyOnError,
                     onCheckedChange = {
                         onUpdate(prefs.copy(notifyOnError = it))
                     }
                 )
-                NotificationSettingRow(
-                    title = "通知時のバイブレーション",
-                    description = "オンにした通知のタイミングに合わせて振動",
+                SettingSwitchRow(
+                    title = s.settingHapticsTitle,
+                    description = s.settingHapticsDesc,
                     checked = prefs.hapticsEnabled,
                     onCheckedChange = {
                         onUpdate(prefs.copy(hapticsEnabled = it))
                     }
                 )
 
-                HorizontalDivider(
-                    color = DeckColors.BorderMuted,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                HorizontalDivider(color = DeckColors.BorderMuted)
 
                 Text(
-                    text = "アプリのアップデート (v${updateState.currentVersion})",
+                    text = s.updateSectionTitle(updateState.currentVersion),
                     color = DeckColors.TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 if (!updateState.statusMessage.isNullOrBlank()) {
                     Text(
                         text = updateState.statusMessage,
                         color = if (updateState.availableUpdate != null) {
-                            DeckColors.StatusThinking
+                            DeckColors.AccentBlue
                         } else {
                             DeckColors.TextSecondary
                         },
@@ -1080,7 +952,7 @@ private fun NotificationSettingsDialog(
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth(),
-                        color = DeckColors.StatusThinking,
+                        color = DeckColors.AccentBlue,
                         trackColor = DeckColors.Background
                     )
                 }
@@ -1098,42 +970,57 @@ private fun NotificationSettingsDialog(
                     ) {
                         Text(
                             text = if (updateState.isDownloading) {
-                                "ダウンロード中 (${updateState.progressPercent ?: 0}%)"
+                                s.updateDownloaderProgress(updateState.progressPercent ?: 0)
                             } else {
-                                "${available.tagName} をダウンロードして更新"
+                                s.updateDownloadAction(available.tagName)
                             },
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
                     }
                 } else {
-                    Button(
+                    OutlinedButton(
                         onClick = onCheckForUpdates,
                         enabled = !updateState.isChecking && !updateState.isDownloading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DeckColors.SurfaceElevated,
-                            contentColor = DeckColors.TextPrimary
-                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = if (updateState.isChecking) {
-                                "GitHub Releases を確認中..."
+                                s.updateCheckButtonChecking
                             } else {
-                                "最新バージョンを確認"
+                                s.updateCheckAction
                             },
                             fontSize = 13.sp
                         )
                     }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onTriggerSimulation()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = s.simulationActionLabel,
+                        fontSize = 12.sp
+                    )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(
-                    text = "閉じる",
-                    color = DeckColors.StatusThinking,
-                    fontWeight = FontWeight.Bold
+                    text = s.closeButton,
+                    color = DeckColors.AccentBlue,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -1141,7 +1028,47 @@ private fun NotificationSettingsDialog(
 }
 
 @Composable
-private fun NotificationSettingRow(
+private fun <T> SegmentedOptionRow(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        options.forEach { (value, label) ->
+            val isSelected = value == selected
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSelect(value) },
+                color = if (isSelected) DeckColors.AccentBlue else DeckColors.Background,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) DeckColors.AccentBlue else DeckColors.BorderMuted
+                )
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) Color.White else DeckColors.TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(
     title: String,
     description: String,
     checked: Boolean,
@@ -1160,20 +1087,19 @@ private fun NotificationSettingRow(
             Text(
                 text = title,
                 color = if (enabled) DeckColors.TextPrimary else DeckColors.TextSecondary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = description,
                 color = DeckColors.TextSecondary,
-                fontSize = 11.sp,
-                lineHeight = 14.sp
+                fontSize = 11.sp
             )
         }
         Switch(
             checked = checked,
-            enabled = enabled,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = DeckColors.AccentBlue,

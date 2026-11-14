@@ -8,6 +8,9 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,8 +27,10 @@ data class SpeechUiState(
 // Android標準SpeechRecognizerを使ったPush-to-Talk音声認識マネージャー
 class PushToTalkManager(
     context: Context,
+    private val languageProvider: () -> AppLanguage = { AppLanguage.SYSTEM },
     private val onTranscriptReady: (String) -> Unit
 ) {
+    private fun strings(): DeckStrings = DeckI18n.strings(languageProvider())
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -46,7 +51,7 @@ class PushToTalkManager(
                     it.copy(
                         isListening = false,
                         isFinalizing = false,
-                        statusHint = "この端末では音声認識サービスを利用できません"
+                        statusHint = strings().speechUnavailable
                     )
                 }
                 return@post
@@ -59,9 +64,10 @@ class PushToTalkManager(
             bufferedFinal = null
 
             ensureRecognizer().apply {
+                val speechTag = languageProvider().speechLocaleTag()
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, speechTag)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 }
@@ -69,13 +75,13 @@ class PushToTalkManager(
                     isListening = true,
                     isFinalizing = false,
                     partialText = "",
-                    statusHint = "聞き取り中... 離すと送信します"
+                    statusHint = strings().speechListeningHint
                 )
                 runCatching { startListening(intent) }.onFailure { err ->
                     isPressed = false
                     _state.value = SpeechUiState(
                         isListening = false,
-                        statusHint = "音声認識の開始に失敗しました: ${err.message}"
+                        statusHint = strings().speechStartFailed(err.message ?: "")
                     )
                 }
             }
@@ -102,7 +108,7 @@ class PushToTalkManager(
                 it.copy(
                     isListening = false,
                     isFinalizing = true,
-                    statusHint = "音声を確定しています..."
+                    statusHint = strings().speechFinalizing
                 )
             }
 
@@ -117,7 +123,7 @@ class PushToTalkManager(
                         commitAndReset(fallback)
                     } else {
                         runCatching { recognizer?.cancel() }
-                        _state.value = SpeechUiState(statusHint = "音声が検出されませんでした")
+                        _state.value = SpeechUiState(statusHint = strings().speechNoAudio)
                     }
                 }
             }
@@ -170,7 +176,7 @@ class PushToTalkManager(
                     if (text.isNotEmpty()) {
                         commitAndReset(text)
                     } else {
-                        _state.value = SpeechUiState(statusHint = "音声を認識できませんでした")
+                        _state.value = SpeechUiState(statusHint = strings().speechNotRecognized)
                     }
                 } else if (isPressed) {
                     bufferedFinal = text
@@ -188,12 +194,13 @@ class PushToTalkManager(
                 }
                 isPressed = false
                 pendingCommitOnResult = false
+                val s = strings()
                 val msg = when (error) {
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "マイク権限が必要です"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> s.speechPermissionMissing
                     SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "音声を認識できませんでした"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "音声認識がビジー状態です"
-                    else -> "音声認識エラー (code=$error)"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> s.speechNotRecognized
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> s.speechBusy
+                    else -> s.speechErrorCode(error)
                 }
                 _state.value = SpeechUiState(statusHint = msg)
             }
@@ -215,7 +222,7 @@ class PushToTalkManager(
             isListening = false,
             isFinalizing = false,
             partialText = "",
-            statusHint = "送信: $transcript"
+            statusHint = strings().speechSent(transcript)
         )
         onTranscriptReady(transcript)
     }

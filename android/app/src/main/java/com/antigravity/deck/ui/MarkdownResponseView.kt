@@ -35,7 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.antigravity.deck.ui.theme.DeckColors
+import com.antigravity.deck.ui.theme.DarkDeckPalette
+import com.antigravity.deck.ui.theme.DeckPalette
+import com.antigravity.deck.ui.theme.LocalDeckColors
 
 internal sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -163,7 +165,10 @@ private val INLINE_TOKEN_REGEX = Regex(
 )
 
 // インライン装飾とリンクをAnnotatedStringへ変換する
-internal fun buildMarkdownInlineText(text: String): AnnotatedString {
+internal fun buildMarkdownInlineText(
+    text: String,
+    palette: DeckPalette = DarkDeckPalette
+): AnnotatedString {
     return buildAnnotatedString {
         var cursor = 0
         for (match in INLINE_TOKEN_REGEX.findAll(text)) {
@@ -187,8 +192,8 @@ internal fun buildMarkdownInlineText(text: String): AnnotatedString {
                     pushStyle(
                         SpanStyle(
                             fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF7DD3FC),
-                            background = Color(0xFF1E293B),
+                            color = palette.inlineCodeText,
+                            background = palette.inlineCodeBackground,
                             fontSize = 12.sp
                         )
                     )
@@ -198,7 +203,7 @@ internal fun buildMarkdownInlineText(text: String): AnnotatedString {
 
                 linkLabel != null && linkUrl != null -> {
                     val linkStyle = SpanStyle(
-                        color = DeckColors.StatusThinking,
+                        color = palette.statusThinking,
                         textDecoration = TextDecoration.Underline
                     )
                     if (linkUrl.startsWith("http://") || linkUrl.startsWith("https://")) {
@@ -243,7 +248,7 @@ internal fun buildMarkdownInlineText(text: String): AnnotatedString {
                             url = rawUrl,
                             styles = TextLinkStyles(
                                 style = SpanStyle(
-                                    color = DeckColors.StatusThinking,
+                                    color = palette.statusThinking,
                                     textDecoration = TextDecoration.Underline
                                 )
                             )
@@ -267,6 +272,7 @@ fun MarkdownResponseView(
     markdown: String,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalDeckColors.current
     val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
 
     SelectionContainer(modifier = modifier) {
@@ -278,13 +284,13 @@ fun MarkdownResponseView(
                 when (block) {
                     is MarkdownBlock.Heading -> {
                         val (fontSize, color) = when (block.level) {
-                            1 -> 17.sp to Color.White
-                            2 -> 15.sp to DeckColors.StatusThinking
-                            3 -> 14.sp to Color(0xFFE2E8F0)
-                            else -> 13.sp to Color(0xFFCBD5E1)
+                            1 -> 17.sp to palette.textPrimary
+                            2 -> 15.sp to palette.statusThinking
+                            3 -> 14.sp to palette.textPrimary
+                            else -> 13.sp to palette.textSecondary
                         }
                         Text(
-                            text = remember(block.text) { buildMarkdownInlineText(block.text) },
+                            text = remember(block.text, palette) { buildMarkdownInlineText(block.text, palette) },
                             color = color,
                             fontSize = fontSize,
                             fontWeight = FontWeight.Bold,
@@ -294,10 +300,10 @@ fun MarkdownResponseView(
 
                     is MarkdownBlock.Paragraph -> {
                         Text(
-                            text = remember(block.text) { buildMarkdownInlineText(block.text) },
-                            color = DeckColors.TextPrimary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
+                            text = remember(block.text, palette) { buildMarkdownInlineText(block.text, palette) },
+                            color = palette.textPrimary,
+                            fontSize = 13.5.sp,
+                            lineHeight = 20.sp
                         )
                     }
 
@@ -311,16 +317,16 @@ fun MarkdownResponseView(
                         ) {
                             Text(
                                 text = block.marker,
-                                color = DeckColors.StatusThinking,
-                                fontSize = 13.sp,
+                                color = palette.statusThinking,
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                lineHeight = 19.sp
+                                lineHeight = 20.sp
                             )
                             Text(
-                                text = remember(block.text) { buildMarkdownInlineText(block.text) },
-                                color = DeckColors.TextPrimary,
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp,
+                                text = remember(block.text, palette) { buildMarkdownInlineText(block.text, palette) },
+                                color = palette.textPrimary,
+                                fontSize = 13.5.sp,
+                                lineHeight = 20.sp,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -331,19 +337,19 @@ fun MarkdownResponseView(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(IntrinsicSize.Min)
-                                .background(Color(0xFF0E1726), RoundedCornerShape(6.dp))
+                                .background(palette.quoteBackground, RoundedCornerShape(6.dp))
                                 .padding(end = 8.dp, top = 6.dp, bottom = 6.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
                                     .fillMaxHeight()
-                                    .background(DeckColors.StatusThinking)
+                                    .background(palette.statusThinking)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = remember(block.text) { buildMarkdownInlineText(block.text) },
-                                color = DeckColors.TextSecondary,
+                                text = remember(block.text, palette) { buildMarkdownInlineText(block.text, palette) },
+                                color = palette.textSecondary,
                                 fontSize = 12.5.sp,
                                 lineHeight = 18.sp
                             )
@@ -353,15 +359,15 @@ fun MarkdownResponseView(
                     is MarkdownBlock.CodeBlock -> {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF0B1220),
+                            color = palette.codeBackground,
                             shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, DeckColors.BorderMuted)
+                            border = BorderStroke(1.dp, palette.borderMuted)
                         ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
+                            Column(modifier = Modifier.padding(10.dp)) {
                                 if (!block.language.isNullOrBlank()) {
                                     Text(
                                         text = block.language,
-                                        color = DeckColors.TextSecondary,
+                                        color = palette.textSecondary,
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 10.sp,
                                         modifier = Modifier.padding(bottom = 4.dp)
@@ -374,10 +380,10 @@ fun MarkdownResponseView(
                                 ) {
                                     Text(
                                         text = block.code,
-                                        color = Color(0xFFE2E8F0),
+                                        color = palette.codeText,
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.5.sp,
-                                        lineHeight = 16.sp
+                                        fontSize = 12.sp,
+                                        lineHeight = 17.sp
                                     )
                                 }
                             }
@@ -386,7 +392,7 @@ fun MarkdownResponseView(
 
                     MarkdownBlock.HorizontalRule -> {
                         HorizontalDivider(
-                            color = DeckColors.BorderMuted,
+                            color = palette.borderMuted,
                             thickness = 1.dp,
                             modifier = Modifier.padding(vertical = 2.dp)
                         )

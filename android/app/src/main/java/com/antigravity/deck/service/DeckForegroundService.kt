@@ -51,6 +51,11 @@ class DeckForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -63,10 +68,17 @@ class DeckForegroundService : Service() {
     }
 
     companion object {
+        private const val ACTION_STOP = "com.antigravity.deck.action.STOP_FOREGROUND"
+
         fun start(context: Context) {
             val appContext = context.applicationContext
             val intent = Intent(appContext, DeckForegroundService::class.java)
             ContextCompat.startForegroundService(appContext, intent)
+        }
+
+        fun stop(context: Context) {
+            val appContext = context.applicationContext
+            appContext.stopService(Intent(appContext, DeckForegroundService::class.java))
         }
     }
 }

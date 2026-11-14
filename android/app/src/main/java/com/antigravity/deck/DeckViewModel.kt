@@ -5,12 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.antigravity.deck.hardware.PushToTalkManager
 import com.antigravity.deck.hardware.SpeechUiState
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.DeckEndpointConfig
 import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.service.DeckSessionController
+import com.antigravity.deck.ui.theme.AppThemeMode
 import com.antigravity.deck.updater.ApkInstallResult
 import com.antigravity.deck.updater.AppUpdateManager
 import com.antigravity.deck.updater.ReleaseInfo
@@ -38,6 +42,9 @@ data class DeckUiState(
     val connectionStatus: ConnectionStatus = ConnectionStatus.Disconnected,
     val endpointConfig: DeckEndpointConfig = DeckEndpointConfig.usbLocalhost(),
     val notificationPrefs: NotificationPreferences = NotificationPreferences(),
+    val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val backgroundEnabled: Boolean = true,
     val speechState: SpeechUiState = SpeechUiState(),
     val feedbackBanner: String? = null,
     val showPairingSheet: Boolean = false,
@@ -49,7 +56,10 @@ data class DeckUiState(
 class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     private val controller = DeckSessionController.getInstance(application)
-    private val pushToTalk = PushToTalkManager(application) { transcript ->
+    private val pushToTalk = PushToTalkManager(
+        context = application,
+        languageProvider = { controller.state.value.appLanguage }
+    ) { transcript ->
         controller.sendPrompt(transcript)
     }
     private val showPairingSheet = MutableStateFlow(false)
@@ -73,6 +83,9 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             connectionStatus = snapshot.connectionStatus,
             endpointConfig = snapshot.endpointConfig,
             notificationPrefs = snapshot.notificationPrefs,
+            appLanguage = snapshot.appLanguage,
+            themeMode = snapshot.themeMode,
+            backgroundEnabled = snapshot.backgroundEnabled,
             speechState = speech,
             feedbackBanner = snapshot.feedbackBanner,
             showPairingSheet = pairingVisible,
@@ -88,6 +101,9 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             connectionStatus = controller.state.value.connectionStatus,
             endpointConfig = controller.state.value.endpointConfig,
             notificationPrefs = controller.state.value.notificationPrefs,
+            appLanguage = controller.state.value.appLanguage,
+            themeMode = controller.state.value.themeMode,
+            backgroundEnabled = controller.state.value.backgroundEnabled,
             feedbackBanner = controller.state.value.feedbackBanner
         )
     )
@@ -134,22 +150,39 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
         controller.updateNotificationPrefs(prefs)
     }
 
+    fun setAppLanguage(language: AppLanguage) {
+        controller.setAppLanguage(language)
+    }
+
+    fun setThemeMode(mode: AppThemeMode) {
+        controller.setThemeMode(mode)
+    }
+
+    fun setBackgroundServiceEnabled(enabled: Boolean) {
+        controller.setBackgroundServiceEnabled(enabled)
+    }
+
+    fun isBackgroundServiceEnabled(): Boolean = controller.isBackgroundServiceEnabled()
+
+    private fun strings(): DeckStrings = DeckI18n.strings(controller.state.value.appLanguage)
+
     fun checkForUpdates(silent: Boolean = false) {
         if (updateState.value.isChecking || updateState.value.isDownloading) return
+        val s = strings()
         viewModelScope.launch {
             updateState.update {
                 it.copy(
                     isChecking = true,
-                    statusMessage = if (silent) it.statusMessage else "GitHub Releases を確認中..."
+                    statusMessage = if (silent) it.statusMessage else s.updateChecking
                 )
             }
-            when (val result = AppUpdateManager.checkForUpdate(BuildConfig.VERSION_NAME)) {
+            when (val result = AppUpdateManager.checkForUpdate(BuildConfig.VERSION_NAME, strings = s)) {
                 is UpdateCheckResult.UpdateAvailable -> {
                     updateState.update {
                         it.copy(
                             isChecking = false,
                             availableUpdate = result.release,
-                            statusMessage = "新しいバージョン ${result.release.tagName} が公開されています"
+                            statusMessage = s.updateAvailable(result.release.tagName)
                         )
                     }
                 }
@@ -159,7 +192,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             isChecking = false,
                             availableUpdate = null,
-                            statusMessage = if (silent) null else "最新バージョンです (v${result.currentVersion})"
+                            statusMessage = if (silent) null else s.updateUpToDate(result.currentVersion)
                         )
                     }
                 }
@@ -169,7 +202,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             isChecking = false,
                             availableUpdate = null,
-                            statusMessage = if (silent) null else "公開済みのリリースはまだありません"
+                            statusMessage = if (silent) null else s.updateNoReleases
                         )
                     }
                 }
@@ -178,7 +211,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                     updateState.update {
                         it.copy(
                             isChecking = false,
-                            statusMessage = if (silent) null else "確認失敗: ${result.message}"
+                            statusMessage = if (silent) null else s.updateCheckFailed(result.message)
                         )
                     }
                 }
@@ -189,13 +222,14 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
     fun installAvailableUpdate() {
         val release = updateState.value.availableUpdate ?: return
         if (updateState.value.isDownloading) return
+        val s = strings()
 
         viewModelScope.launch {
             updateState.update {
                 it.copy(
                     isDownloading = true,
                     progressPercent = 0,
-                    statusMessage = "${release.tagName} をダウンロード中..."
+                    statusMessage = s.updateDownloading(release.tagName)
                 )
             }
             try {
@@ -203,6 +237,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                     val result = AppUpdateManager.downloadAndInstallApk(
                         context = getApplication(),
                         release = release,
+                        strings = s,
                         onProgress = { pct ->
                             updateState.update { it.copy(progressPercent = pct) }
                         }
@@ -213,7 +248,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                             it.copy(
                                 isDownloading = false,
                                 progressPercent = 100,
-                                statusMessage = "インストーラを起動しました"
+                                statusMessage = s.updateInstallerLaunched
                             )
                         }
                     }
@@ -224,7 +259,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                             it.copy(
                                 isDownloading = false,
                                 progressPercent = null,
-                                statusMessage = "このアプリからのインストールを許可してから再実行してください"
+                                statusMessage = s.updateInstallPermissionNeeded
                             )
                         }
                     }
@@ -234,7 +269,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                             it.copy(
                                 isDownloading = false,
                                 progressPercent = null,
-                                statusMessage = "更新失敗: ${result.message}"
+                                statusMessage = s.updateFailed(result.message)
                             )
                         }
                     }
@@ -244,7 +279,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         isDownloading = false,
                         progressPercent = null,
-                        statusMessage = "ダウンロード失敗: ${e.message ?: "エラー"}"
+                        statusMessage = s.updateDownloadFailed(e.message ?: s.updateGenericError)
                     )
                 }
             }

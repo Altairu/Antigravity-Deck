@@ -14,6 +14,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.antigravity.deck.MainActivity
 import com.antigravity.deck.R
+import com.antigravity.deck.i18n.AppLanguage
+import com.antigravity.deck.i18n.DeckI18n
+import com.antigravity.deck.i18n.DeckStrings
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
 import com.antigravity.deck.model.NotificationPreferences
@@ -26,35 +29,39 @@ class DeckNotificationManager(context: Context) {
     private val managerCompat = NotificationManagerCompat.from(appContext)
 
     init {
-        ensureChannels()
+        ensureChannels(DeckI18n.strings(AppLanguage.SYSTEM))
     }
 
-    private fun ensureChannels() {
+    fun refreshChannels(strings: DeckStrings) {
+        ensureChannels(strings)
+    }
+
+    private fun ensureChannels(strings: DeckStrings) {
         val systemManager = appContext.getSystemService(NotificationManager::class.java) ?: return
 
         val alertsChannel = NotificationChannel(
             CHANNEL_ALERTS,
-            "承認待ち / エラー通知",
+            strings.channelAlertsName,
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "承認待ちやエラー発生時の緊急通知を表示します"
+            description = strings.channelAlertsDesc
             enableVibration(true)
         }
 
         val statusChannel = NotificationChannel(
             CHANNEL_STATUS,
-            "タスク完了通知",
+            strings.channelStatusName,
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "エージェントのタスク完了を通知します"
+            description = strings.channelStatusDesc
         }
 
         val foregroundChannel = NotificationChannel(
             CHANNEL_FOREGROUND,
-            "バックグラウンド監視常駐",
+            strings.channelForegroundName,
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "バックグラウンドでPC側とのWebSocket接続を維持するための常駐通知です"
+            description = strings.channelForegroundDesc
             setShowBadge(false)
         }
 
@@ -80,14 +87,15 @@ class DeckNotificationManager(context: Context) {
 
     fun buildForegroundNotification(
         session: AgentSession,
-        connectionStatus: ConnectionStatus
+        connectionStatus: ConnectionStatus,
+        strings: DeckStrings = DeckI18n.strings(AppLanguage.SYSTEM)
     ): Notification {
         val contentPendingIntent = createOpenAppPendingIntent()
 
         val title = if (connectionStatus is ConnectionStatus.Connected) {
-            "Antigravity Deck 監視中: ${session.status.label}"
+            strings.fgTitleConnected(strings.statusLabel(session.status))
         } else {
-            "Antigravity Deck バックグラウンド待機中"
+            strings.fgTitleStandby
         }
         val body = "${session.title} / ${session.modelName}"
 
@@ -105,7 +113,8 @@ class DeckNotificationManager(context: Context) {
 
     fun updateForegroundNotification(
         session: AgentSession,
-        connectionStatus: ConnectionStatus
+        connectionStatus: ConnectionStatus,
+        strings: DeckStrings = DeckI18n.strings(AppLanguage.SYSTEM)
     ) {
         if (!hasNotificationPermission()) {
             return
@@ -113,7 +122,7 @@ class DeckNotificationManager(context: Context) {
         try {
             managerCompat.notify(
                 FOREGROUND_NOTIFICATION_ID,
-                buildForegroundNotification(session, connectionStatus)
+                buildForegroundNotification(session, connectionStatus, strings)
             )
         } catch (_: SecurityException) {
             // 通知権限が取り消されていた場合は無視する
@@ -122,7 +131,8 @@ class DeckNotificationManager(context: Context) {
 
     fun notifySessionTransition(
         session: AgentSession,
-        prefs: NotificationPreferences = NotificationPreferences()
+        prefs: NotificationPreferences = NotificationPreferences(),
+        strings: DeckStrings = DeckI18n.strings(AppLanguage.SYSTEM)
     ) {
         if (!prefs.shouldNotify(session.status)) {
             cancel()
@@ -138,9 +148,9 @@ class DeckNotificationManager(context: Context) {
         val builder = when (session.status) {
             AgentStatus.WAITING_APPROVAL -> {
                 val preview = if (prefs.showApprovalPreviewInNotification) {
-                    session.approvalPreview ?: "ツール実行の確認待ちです"
+                    session.approvalPreview ?: strings.notifyApprovalPreviewFallback
                 } else {
-                    "PC側で承認待ちの操作があります"
+                    strings.notifyApprovalHiddenPreview
                 }
                 val approveIntent = createActionPendingIntent(
                     action = NotificationActionReceiver.ACTION_APPROVE,
@@ -153,7 +163,7 @@ class DeckNotificationManager(context: Context) {
 
                 NotificationCompat.Builder(appContext, CHANNEL_ALERTS)
                     .setSmallIcon(R.drawable.ic_deck_notification)
-                    .setContentTitle("承認待ち: ${session.title}")
+                    .setContentTitle(strings.notifyApprovalTitle(session.title))
                     .setContentText(preview)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -169,7 +179,7 @@ class DeckNotificationManager(context: Context) {
                     ?: "${session.title} (${session.modelName})"
                 NotificationCompat.Builder(appContext, CHANNEL_STATUS)
                     .setSmallIcon(R.drawable.ic_deck_notification)
-                    .setContentTitle("タスク完了: ${session.title}")
+                    .setContentTitle(strings.notifyDoneTitle(session.title))
                     .setContentText(summary)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -181,7 +191,7 @@ class DeckNotificationManager(context: Context) {
                 val detail = session.approvalPreview ?: session.title
                 NotificationCompat.Builder(appContext, CHANNEL_ALERTS)
                     .setSmallIcon(R.drawable.ic_deck_notification)
-                    .setContentTitle("エラー発生")
+                    .setContentTitle(strings.notifyErrorTitle)
                     .setContentText(detail)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)

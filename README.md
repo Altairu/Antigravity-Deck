@@ -1,62 +1,64 @@
+English | [日本語](./README.ja.md)
+
 # Antigravity Deck
 
-Google Antigravity 上で動いているエージェントを、手元の Android スマートフォンから監視と操作するためのコンパニオンシステムです。
+A companion system for monitoring and controlling Google Antigravity agents directly from your Android phone.
 
-PC 側で動く VS Code 互換拡張機能と Android アプリを WebSocket で直結しており、離席中でもエージェントへの指示出し、返答の確認、コマンド実行の承認をスマホだけで完結できます。
+It connects a VS Code-compatible extension on your PC to an Android app over WebSocket, allowing you to send prompts, read responses, and approve or reject tool executions even while away from your desk.
 
-## 主な機能
+## Key Features
 
-* エージェントの状態同期: `idle` / `thinking` / `waiting_approval` / `done` / `error` の各状態をリアルタイムでスマホ画面へ反映し、ステータスに応じた配色と振動で通知します
-* チャット送信とマークダウン返答表示: スマホのテキスト入力欄や Push-to-Talk 音声入力からプロンプトを送信し、Antigravity からの返答を見出しやコードブロック付きのマークダウンとして閲覧できます
-* 承認プレビューと通知バー操作: `PreToolUse` フックで捕捉した実行予定コマンドやファイル変更の要約を確認し、アプリ画面だけでなく通知バー上の Approve と Reject ボタンから直接応答できます
-* 通知の詳細設定: 承認待ち通知、承認通知へのプレビュー表示、会話終了通知、エラー通知、バイブレーションを項目ごとにオンとオフで切り替えられます
-* モデルと推論レベルの切り替え: `Gemini 4 Hydrogen` / `Gemini 4 Argon` / `Gemini 3.8 Flash` / `Claude Sonnet 5.5` / `Claude Opus 5.5` / `GPT-OSS 120B` / `Orchestrator (Argon)` の選択と、`low` / `medium` / `high` / `xhigh` の切り替えに対応しています
-* バックグラウンド常駐: フォアグラウンドサービスとして接続を維持するため、画面を閉じていても状態通知や承認待ちの受け取りが可能です
-* 自動アップデート: PC 拡張機能は Open VSX Registry および GitHub Releases、Android アプリは GitHub Releases からのアプリ内アップデートに対応しています
+* Real-time Agent Sync: Mirrors `idle`, `thinking`, `waiting_approval`, `done`, and `error` states to your phone with status colors and haptic feedback
+* Prompt Input & Markdown Responses: Send messages via text or Push-to-Talk voice input and read Antigravity replies rendered as Markdown with headings and code blocks
+* Approval Previews & Notification Actions: Inspect pending commands or file changes captured via `PreToolUse` hooks and respond directly from the app or Approve/Reject notification buttons
+* Notification & Language Settings: Toggle notifications and vibration per event (approval requests, preview details, task completion, errors) and switch app language between System, Japanese, and English
+* Model & Reasoning Effort Control: Switch between `Gemini 4 Hydrogen`, `Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Sonnet 5.5`, `Claude Opus 5.5`, `GPT-OSS 120B`, and `Orchestrator (Argon)`, as well as `low`, `medium`, `high`, and `xhigh` reasoning effort
+* Background Connection: Runs as a foreground service so you still receive status updates and approval prompts with the screen off
+* Built-in Updates: Supports updates via Open VSX Registry / GitHub Releases for the PC extension and in-app updates from GitHub Releases for the Android app
 
-## 導入と使い方
+## Getting Started
 
-### インストール
+### Installation
 
-* PC 拡張機能: Antigravity IDE の拡張機能ビューで `Antigravity Deck` を検索してインストールするか、[GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases) から `.vsix` ファイルを取得して導入します
-* Android アプリ: [GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases) から最新の `antigravity-deck-*.apk` をダウンロードして端末へインストールします
+* PC Extension: Search for `Altairu.antigravity-deck` (`Antigravity Deck`) in the Antigravity IDE Extensions view, or install a `.vsix` package from [GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases)
+* Android App: Download the latest `antigravity-deck-*.apk` from [GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases) and install it on your device
 
-### PC とスマホの接続
+### Pairing PC and Phone
 
-* Wi-Fi 接続を使う場合: 同じネットワーク内で PC 側のコマンドパレットから `Antigravity Deck: Show Pairing QR` を実行し、Android アプリ右上の `QR` ボタンから QR コードを読み取ります
-* USB 有線接続を使う場合: スマホを USB デバッグ接続した状態で PC 側からポートフォワーディングを実行し、アプリ右上の `USB` ボタンをタップします
+* Over Wi-Fi: Run `Antigravity Deck: Show Pairing QR` from the Command Palette on your PC, then tap the `QR` button in the Android app to scan the code
+* Over USB: Enable USB debugging on your phone, run port forwarding on your PC, and tap the `USB` button in the Android app
 
 ```powershell
 adb reverse tcp:8765 tcp:8765
 ```
 
-### 日常の操作
+### Daily Usage
 
-* 下部の入力欄またはマイクボタンの長押しで Antigravity へメッセージを送信できます
-* 承認待ち状態になると画面と通知にコマンド内容が表示されるため、`Approve` または `Reject` を押して進行を制御します
-* 画面右上の通知アイコンから、イベントごとの通知有無やアプリのアップデート確認を行えます
+* Type in the bottom input bar or hold the microphone button to send a prompt to Antigravity
+* When approval is required, review the command details in the app or notification and tap `Approve` or `Reject`
+* Open the settings icon in the top-right corner to configure per-event notifications, switch language, or check for app updates
 
-## システム構成
+## Architecture
 
 ```mermaid
 flowchart LR
-    AG[Antigravity エージェント] -->|"Hook標準入力"| HK[deck-hook.mjs]
-    HK -->|"HTTP POST 127.0.0.1:8766/hook"| EX[Antigravity Deck 拡張機能]
-    TR[transcript.jsonl] -->|"完了時に返答抽出"| EX
-    EX <-->|"WebSocket ポート 8765"| AN[Android コンパニオンアプリ]
+    AG[Antigravity Agent] -->|"Hook stdin"| HK[deck-hook.mjs]
+    HK -->|"HTTP POST 127.0.0.1:8766/hook"| EX[Antigravity Deck Extension]
+    TR[transcript.jsonl] -->|"Extract response on stop"| EX
+    EX <-->|"WebSocket port 8765"| AN[Android Companion App]
 ```
 
-## リポジトリ構成
+## Repository Structure
 
-* `protocol/` : PC と Android 間で共有する WebSocket JSON スキーマ定義と仕様ドキュメント
-* `extension/` : TypeScript 製の VS Code 互換拡張機能本体
-* `android/` : Kotlin と Jetpack Compose で構築された Android コンパニオンアプリ
-* `.agents/` : Antigravity の Lifecycle Hooks 設定と通知用スクリプト
-* `.github/workflows/` : タグプッシュ時に `.vsix` と `.apk` をビルドしてリリース公開する GitHub Actions 定義
+* `protocol/` : Shared WebSocket JSON schemas and protocol specifications
+* `extension/` : VS Code-compatible extension written in TypeScript
+* `android/` : Android companion app built with Kotlin and Jetpack Compose
+* `.agents/` : Antigravity Lifecycle Hooks configuration and relay scripts
+* `.github/workflows/` : GitHub Actions workflows for building and publishing `.vsix` and `.apk` releases on tags
 
-## 開発者向けビルド手順
+## Building from Source
 
-### PC側拡張機能
+### PC Extension
 
 ```powershell
 cd extension
@@ -66,13 +68,13 @@ node ./test/integration-test.mjs
 npm run package
 ```
 
-IDE を起動せずに動作確認だけを行う場合は、スタンドアロンブリッジを利用できます。
+To test the protocol without launching the IDE, run the standalone bridge:
 
 ```powershell
 node extension/scripts/standalone-bridge.mjs --simulate
 ```
 
-### Android アプリ
+### Android App
 
 ```powershell
 cd android
@@ -81,10 +83,10 @@ $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 .\gradlew.bat testDebugUnitTest assembleDebug --no-daemon
 ```
 
-## Lifecycle Hooks 連携
+## Lifecycle Hooks Integration
 
-`.agents/hooks.json` では `SessionStart` / `PreInvocation` / `PreToolUse` / `PostToolUse` / `Stop` の各イベントを `.agents/scripts/deck-hook.mjs` へ転送しています。スマホからの承認待ち中にタイムアウトしないよう、`PreToolUse` の `timeout` は `300000` ミリ秒、スクリプト側の待機は `295000` ミリ秒、拡張機能側の保留待機は `290000` ミリ秒に設定しています。
+`.agents/hooks.json` forwards `SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, and `Stop` events to `.agents/scripts/deck-hook.mjs`. To prevent premature timeouts while waiting for mobile approval, `PreToolUse` uses a `300000` ms hook timeout, `295000` ms script wait, and `290000` ms extension hold timeout.
 
-## ライセンス
+## License
 
-MIT License のもとで公開しています。詳細は [LICENSE](./LICENSE) を参照してください。
+Released under the MIT License. See [LICENSE](./LICENSE) for details.
