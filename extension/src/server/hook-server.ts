@@ -134,6 +134,9 @@ export class DeckHookServer {
         this.getConnectedClients() > 0;
 
       if (canWaitForMobile) {
+        if (transition.reasoningEffort) {
+          this.sessionStore.updateState({ reasoning_effort: transition.reasoningEffort });
+        }
         const preview = transition.approvalPreview || "ツール実行の承認待ち";
         const decision = await this.sessionStore.requestApproval(
           preview,
@@ -149,6 +152,7 @@ export class DeckHookServer {
       this.sessionStore.updateState({
         ...(transition.title ? { title: transition.title } : {}),
         ...(transition.modelName ? { model_name: transition.modelName } : {}),
+        ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
         status: transition.status,
         approval_preview: transition.approvalPreview
       });

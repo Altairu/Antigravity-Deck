@@ -18,7 +18,7 @@ class SessionStore extends node_events_1.EventEmitter {
             status: "idle",
             approval_preview: null,
             reasoning_effort: "medium",
-            model_name: "auto",
+            model_name: antigravity_bindings_1.DEFAULT_MODEL,
             updated_at: new Date().toISOString()
         };
     }
@@ -50,11 +50,15 @@ class SessionStore extends node_events_1.EventEmitter {
         return this.updateState({ reasoning_effort: effort });
     }
     setModel(modelName) {
-        const normalized = modelName.trim() || "auto";
+        const parsed = (0, antigravity_bindings_1.parseAntigravityModelId)(modelName);
+        const normalized = parsed.modelName || antigravity_bindings_1.DEFAULT_MODEL;
         if (!this.availableModels.includes(normalized)) {
             this.availableModels.push(normalized);
         }
-        return this.updateState({ model_name: normalized });
+        return this.updateState({
+            model_name: normalized,
+            ...(parsed.effort ? { reasoning_effort: parsed.effort } : {})
+        });
     }
     recordPrompt(prompt) {
         const trimmed = prompt.trim();

@@ -45,14 +45,24 @@ data class AgentSession(
     val updatedAt: String? = null
 ) {
     companion object {
-        const val DEFAULT_MODEL = "auto"
+        const val DEFAULT_MODEL = "Gemini 4 Hydrogen"
 
-        val DEFAULT_AVAILABLE_MODELS = listOf(
+        val LEGACY_MODELS = setOf(
             "auto",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
             "claude-sonnet-4-5",
             "o3"
+        )
+
+        val DEFAULT_AVAILABLE_MODELS = listOf(
+            "Gemini 4 Hydrogen",
+            "Gemini 4 Argon",
+            "Gemini 3.8 Flash",
+            "Claude Sonnet 5.5",
+            "Claude Opus 5.5",
+            "GPT-OSS 120B",
+            "Orchestrator (Argon)"
         )
 
         fun initial(): AgentSession {
@@ -165,7 +175,11 @@ object ProtocolCodec {
                 if (name.isNotEmpty()) add(name)
             }
         }
-        return list.ifEmpty { null }
+        if (list.isEmpty()) {
+            return null
+        }
+        val isAllLegacy = list.all { AgentSession.LEGACY_MODELS.contains(it.lowercase()) }
+        return if (isAllLegacy) AgentSession.DEFAULT_AVAILABLE_MODELS else list
     }
 
     private fun parseSession(obj: JSONObject): AgentSession? {
@@ -177,8 +191,14 @@ object ProtocolCodec {
             obj.optString("approval_preview").takeIf { it.isNotEmpty() }
         }
         val effort = ReasoningEffort.parse(obj.optString("reasoning_effort", "medium"))
-        val modelName = obj.optString("model_name", AgentSession.DEFAULT_MODEL)
+        val rawModel = obj.optString("model_name", AgentSession.DEFAULT_MODEL)
+            .trim()
             .ifBlank { AgentSession.DEFAULT_MODEL }
+        val modelName = if (AgentSession.LEGACY_MODELS.contains(rawModel.lowercase())) {
+            AgentSession.DEFAULT_MODEL
+        } else {
+            rawModel
+        }
         val updatedAt = if (obj.isNull("updated_at")) null else obj.optString("updated_at")
         return AgentSession(
             title = title,

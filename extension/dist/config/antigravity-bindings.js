@@ -1,18 +1,111 @@
 "use strict";
 // Antigravity固有の内部コマンドID、Lifecycle Hooksイベント、および承認プレビュー変換のマッピング定義
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.APPROVAL_REQUIRED_TOOLS = exports.HOOK_EVENT_STATUS_MAP = exports.ANTIGRAVITY_COMMAND_BINDINGS = exports.DEFAULT_AVAILABLE_MODELS = void 0;
+exports.APPROVAL_REQUIRED_TOOLS = exports.HOOK_EVENT_STATUS_MAP = exports.ANTIGRAVITY_COMMAND_BINDINGS = exports.DEFAULT_AVAILABLE_MODELS = exports.DEFAULT_MODEL = void 0;
+exports.parseAntigravityModelId = parseAntigravityModelId;
+exports.resolveAntigravityModelId = resolveAntigravityModelId;
 exports.normalizeReasoningEffort = normalizeReasoningEffort;
 exports.buildApprovalPreview = buildApprovalPreview;
 exports.resolveHookTransition = resolveHookTransition;
-// 既定で選択可能なAIモデル一覧
-exports.DEFAULT_AVAILABLE_MODELS = [
-    "auto",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-    "claude-sonnet-4-5",
-    "o3"
+// 既定のAIモデル表示名
+exports.DEFAULT_MODEL = "Gemini 4 Hydrogen";
+// Antigravityで利用可能な現行モデルと内部モデルIDのマッピング定義
+const MODEL_CATALOG = [
+    {
+        displayName: "Gemini 4 Hydrogen",
+        idPrefix: "gemini-4-hydrogen-",
+        supportedEfforts: ["low", "medium", "high", "xhigh"],
+        aliases: ["gemini 4 hydrogen", "gemini-4-hydrogen"]
+    },
+    {
+        displayName: "Gemini 4 Argon",
+        idPrefix: "gemini-4-argon-",
+        supportedEfforts: ["low", "medium", "high"],
+        aliases: ["gemini 4 argon", "gemini-4-argon"]
+    },
+    {
+        displayName: "Gemini 3.8 Flash",
+        idPrefix: "gemini-3.8-flash-",
+        supportedEfforts: ["low", "medium", "high"],
+        aliases: ["gemini 3.8 flash", "gemini-3.8-flash"]
+    },
+    {
+        displayName: "Claude Sonnet 5.5",
+        idPrefix: "claude-sonnet-5-5-",
+        supportedEfforts: ["low", "medium", "high"],
+        aliases: ["claude sonnet 5.5", "claude-sonnet-5-5", "claude-sonnet-5.5"]
+    },
+    {
+        displayName: "Claude Opus 5.5",
+        idPrefix: "claude-opus-5-5-",
+        supportedEfforts: ["low", "medium", "high"],
+        aliases: ["claude opus 5.5", "claude-opus-5-5", "claude-opus-5.5"]
+    },
+    {
+        displayName: "GPT-OSS 120B",
+        idPrefix: "gpt-oss-120b-",
+        supportedEfforts: ["medium"],
+        fixedId: "gpt-oss-120b-medium",
+        aliases: ["gpt-oss 120b", "gpt-oss-120b", "gpt-oss-120b-medium"]
+    },
+    {
+        displayName: "Orchestrator (Argon)",
+        idPrefix: "gemini-pro-orchestrator-",
+        supportedEfforts: [],
+        fixedId: "gemini-pro-orchestrator-g1-pro",
+        aliases: ["orchestrator (argon)", "orchestrator", "gemini-pro-orchestrator-g1-pro"]
+    }
 ];
+// 既定で選択可能なAIモデル一覧
+exports.DEFAULT_AVAILABLE_MODELS = MODEL_CATALOG.map((entry) => entry.displayName);
+// 内部モデルIDや表示名から表示モデル名と推論レベルを抽出する
+function parseAntigravityModelId(rawModel) {
+    const trimmed = rawModel.trim();
+    if (!trimmed) {
+        return { modelName: exports.DEFAULT_MODEL };
+    }
+    const lower = trimmed.toLowerCase();
+    const displaySuffixMatch = lower.match(/^(.+?)\s*\((low|medium|high|xhigh)\)$/);
+    const baseName = displaySuffixMatch ? displaySuffixMatch[1].trim() : lower;
+    const suffixEffort = displaySuffixMatch
+        ? normalizeReasoningEffort(displaySuffixMatch[2])
+        : null;
+    for (const entry of MODEL_CATALOG) {
+        if (entry.fixedId && lower === entry.fixedId) {
+            return { modelName: entry.displayName };
+        }
+        if (entry.aliases.includes(baseName)) {
+            return suffixEffort
+                ? { modelName: entry.displayName, effort: suffixEffort }
+                : { modelName: entry.displayName };
+        }
+        if (lower.startsWith(entry.idPrefix)) {
+            const idSuffix = lower.slice(entry.idPrefix.length);
+            const effort = normalizeReasoningEffort(idSuffix);
+            return effort
+                ? { modelName: entry.displayName, effort }
+                : { modelName: entry.displayName };
+        }
+    }
+    return { modelName: trimmed };
+}
+// 表示モデル名と推論レベルからAntigravity内部モデルIDを解決する
+function resolveAntigravityModelId(modelName, effort) {
+    const parsed = parseAntigravityModelId(modelName);
+    const entry = MODEL_CATALOG.find((item) => item.displayName === parsed.modelName);
+    if (!entry) {
+        return modelName.trim() || "gemini-4-hydrogen-medium";
+    }
+    if (entry.fixedId) {
+        return entry.fixedId;
+    }
+    const targetEffort = effort === "xhigh" && !entry.supportedEfforts.includes("xhigh")
+        ? "high"
+        : entry.supportedEfforts.includes(effort)
+            ? effort
+            : entry.supportedEfforts[0] || "medium";
+    return `${entry.idPrefix}${targetEffort}`;
+}
 // Antigravityのバージョンや環境差を吸収するため、優先順でコマンドID候補を列挙する
 exports.ANTIGRAVITY_COMMAND_BINDINGS = {
     approve: [
@@ -130,14 +223,17 @@ function resolveHookTransition(payload) {
     const title = payload.lastUserInput
         ? truncateText(payload.lastUserInput.replace(/\s+/g, " ").trim(), 48)
         : undefined;
-    const modelName = typeof payload.modelName === "string" && payload.modelName.trim().length > 0
-        ? payload.modelName.trim()
+    const parsedModel = typeof payload.modelName === "string" && payload.modelName.trim().length > 0
+        ? parseAntigravityModelId(payload.modelName)
         : undefined;
+    const modelName = parsedModel?.modelName;
+    const reasoningEffort = parsedModel?.effort;
     if (eventName === "SessionStart" || eventName === "PreInvocation" || eventName === "PostInvocation") {
         return {
             status: "thinking",
             title,
             modelName,
+            reasoningEffort,
             approvalPreview: null,
             requiresApproval: false
         };
@@ -150,6 +246,7 @@ function resolveHookTransition(payload) {
             status: requiresApproval ? "waiting_approval" : "thinking",
             title,
             modelName,
+            reasoningEffort,
             approvalPreview: requiresApproval ? preview : `ツール実行中: ${toolName}`,
             requiresApproval
         };
@@ -160,6 +257,7 @@ function resolveHookTransition(payload) {
                 status: "error",
                 title,
                 modelName,
+                reasoningEffort,
                 approvalPreview: truncateText(String(payload.error), 320),
                 requiresApproval: false
             };
@@ -168,6 +266,7 @@ function resolveHookTransition(payload) {
             status: "thinking",
             title,
             modelName,
+            reasoningEffort,
             approvalPreview: null,
             requiresApproval: false
         };
@@ -180,6 +279,7 @@ function resolveHookTransition(payload) {
                 status: "error",
                 title,
                 modelName,
+                reasoningEffort,
                 approvalPreview: payload.error ? truncateText(String(payload.error), 320) : "エージェントがエラー終了しました",
                 requiresApproval: false
             };
@@ -189,6 +289,7 @@ function resolveHookTransition(payload) {
                 status: "idle",
                 title,
                 modelName,
+                reasoningEffort,
                 approvalPreview: null,
                 requiresApproval: false
             };
@@ -197,6 +298,7 @@ function resolveHookTransition(payload) {
             status: "done",
             title,
             modelName,
+            reasoningEffort,
             approvalPreview: null,
             requiresApproval: false
         };
@@ -206,6 +308,7 @@ function resolveHookTransition(payload) {
         status: mappedStatus,
         title,
         modelName,
+        reasoningEffort,
         approvalPreview: null,
         requiresApproval: false
     };

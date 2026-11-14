@@ -16,6 +16,6 @@
   },
   "set_model": {
     "type": "set_model",
-    "model_name": "gemini-2.5-pro"
+    "model_name": "Claude Sonnet 5.5"
   }
 }

@@ -15,24 +15,27 @@ class ProtocolModelsTest {
         val raw = """
             {
               "type": "state_sync",
-              "timestamp": "2026-11-14T19:45:00.000Z",
+              "timestamp": "2026-11-14T20:45:00.000Z",
               "title": "認証修正",
               "status": "waiting_approval",
               "approval_preview": "$ npm test",
               "reasoning_effort": "xhigh",
-              "model_name": "gemini-2.5-pro",
-              "available_models": ["auto", "gemini-2.5-pro", "o3"]
+              "model_name": "Gemini 4 Hydrogen",
+              "available_models": ["Gemini 4 Hydrogen", "Gemini 4 Argon", "Claude Sonnet 5.5"]
             }
         """.trimIndent()
 
         val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
         assertNotNull(event)
-        assertEquals(listOf("auto", "gemini-2.5-pro", "o3"), event!!.availableModels)
+        assertEquals(
+            listOf("Gemini 4 Hydrogen", "Gemini 4 Argon", "Claude Sonnet 5.5"),
+            event!!.availableModels
+        )
         assertEquals("認証修正", event.session.title)
         assertEquals(AgentStatus.WAITING_APPROVAL, event.session.status)
         assertEquals("$ npm test", event.session.approvalPreview)
         assertEquals(ReasoningEffort.XHIGH, event.session.reasoningEffort)
-        assertEquals("gemini-2.5-pro", event.session.modelName)
+        assertEquals("Gemini 4 Hydrogen", event.session.modelName)
     }
 
     @Test
@@ -44,22 +47,42 @@ class ProtocolModelsTest {
               "status": "thinking",
               "approval_preview": null,
               "reasoning_effort": "high",
-              "model_name": "o3"
+              "model_name": "Gemini 4 Argon"
             }
         """.trimIndent()
 
         val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
         assertNotNull(event)
         assertEquals(AgentStatus.THINKING, event!!.session.status)
-        assertEquals("o3", event.session.modelName)
+        assertEquals("Gemini 4 Argon", event.session.modelName)
         assertNull(event.session.approvalPreview)
     }
 
     @Test
+    fun decodeStateSync_replacesLegacyModelsWithCurrentCatalog() {
+        val raw = """
+            {
+              "type": "state_sync",
+              "title": "旧サーバー互換確認",
+              "status": "idle",
+              "approval_preview": null,
+              "reasoning_effort": "medium",
+              "model_name": "gemini-2.5-pro",
+              "available_models": ["auto", "gemini-2.5-pro", "gemini-2.5-flash", "claude-sonnet-4-5", "o3"]
+            }
+        """.trimIndent()
+
+        val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
+        assertNotNull(event)
+        assertEquals(AgentSession.DEFAULT_MODEL, event!!.session.modelName)
+        assertEquals(AgentSession.DEFAULT_AVAILABLE_MODELS, event.availableModels)
+    }
+
+    @Test
     fun commands_encodeWithoutSessionId() {
-        val modelObj = JSONObject(ProtocolCodec.commandSetModel("claude-sonnet-4-5"))
+        val modelObj = JSONObject(ProtocolCodec.commandSetModel("Claude Sonnet 5.5"))
         assertEquals("set_model", modelObj.getString("type"))
-        assertEquals("claude-sonnet-4-5", modelObj.getString("model_name"))
+        assertEquals("Claude Sonnet 5.5", modelObj.getString("model_name"))
         assertFalse(modelObj.has("session_id"))
 
         val approveObj = JSONObject(ProtocolCodec.commandApprove())

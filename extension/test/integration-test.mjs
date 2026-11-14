@@ -64,8 +64,10 @@ async function run() {
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(messages[0]?.type, "state_sync");
     assert.equal(messages[0]?.status, "idle");
+    assert.equal(messages[0]?.model_name, "Gemini 4 Hydrogen");
     assert.ok(Array.isArray(messages[0]?.available_models));
-    assert.ok(messages[0].available_models.includes("gemini-2.5-pro"));
+    assert.ok(messages[0].available_models.includes("Gemini 4 Hydrogen"));
+    assert.ok(messages[0].available_models.includes("Claude Sonnet 5.5"));
 
     // 3. PreToolUse Hookからwaiting_approvalが配信され、approve送信でallowが返ること
     const hookPromise = new Promise((resolve, reject) => {
@@ -110,17 +112,30 @@ async function run() {
 
     // 4. 推論レベル変更、モデル変更、プロンプト送信がブリッジまで届くこと
     ws.send(JSON.stringify({ type: "set_reasoning_effort", reasoning_effort: "xhigh" }));
-    ws.send(JSON.stringify({ type: "set_model", model_name: "gemini-2.5-pro" }));
+    ws.send(JSON.stringify({ type: "set_model", model_name: "Claude Sonnet 5.5" }));
     ws.send(JSON.stringify({ type: "send_prompt", prompt: "次へ進む" }));
     await new Promise((r) => setTimeout(r, 120));
 
     assert.ok(calls.some((c) => c[0] === "approve"));
     assert.ok(calls.some((c) => c[0] === "effort" && c[1] === "xhigh"));
-    assert.ok(calls.some((c) => c[0] === "model" && c[1] === "gemini-2.5-pro"));
+    assert.ok(calls.some((c) => c[0] === "model" && c[1] === "Claude Sonnet 5.5"));
     assert.ok(calls.some((c) => c[0] === "prompt" && c[1] === "次へ進む"));
     assert.ok(
-      messages.some((m) => m.type === "state_sync" && m.model_name === "gemini-2.5-pro"),
+      messages.some((m) => m.type === "state_sync" && m.model_name === "Claude Sonnet 5.5"),
       "model_name update should be broadcast"
+    );
+
+    // 5. 内部モデルIDが来た場合も表示名と推論レベルへ正規化されること
+    ws.send(JSON.stringify({ type: "set_model", model_name: "gemini-4-argon-high" }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.ok(
+      messages.some(
+        (m) =>
+          m.type === "state_sync" &&
+          m.model_name === "Gemini 4 Argon" &&
+          m.reasoning_effort === "high"
+      ),
+      "internal model ID should normalize to display name and effort"
     );
 
     ws.close();

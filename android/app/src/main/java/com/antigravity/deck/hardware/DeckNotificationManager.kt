@@ -1,6 +1,7 @@
 package com.antigravity.deck.hardware
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,8 +16,9 @@ import com.antigravity.deck.MainActivity
 import com.antigravity.deck.R
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
+import com.antigravity.deck.network.ConnectionStatus
 
-// エージェントの承認待ちや完了、エラー状態を通知バーへ配信するマネージャー
+// エージェントの承認待ちや完了、エラー状態および常駐通知を配信するマネージャー
 class DeckNotificationManager(context: Context) {
 
     private val appContext = context.applicationContext
@@ -46,8 +48,18 @@ class DeckNotificationManager(context: Context) {
             description = "エージェントのタスク完了を通知します"
         }
 
+        val foregroundChannel = NotificationChannel(
+            CHANNEL_FOREGROUND,
+            "バックグラウンド監視常駐",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "バックグラウンドでPC側とのWebSocket接続を維持するための常駐通知です"
+            setShowBadge(false)
+        }
+
         systemManager.createNotificationChannel(alertsChannel)
         systemManager.createNotificationChannel(statusChannel)
+        systemManager.createNotificationChannel(foregroundChannel)
     }
 
     fun hasNotificationPermission(): Boolean {
@@ -65,6 +77,48 @@ class DeckNotificationManager(context: Context) {
         managerCompat.cancel(NOTIFICATION_ID)
     }
 
+    fun buildForegroundNotification(
+        session: AgentSession,
+        connectionStatus: ConnectionStatus
+    ): Notification {
+        val contentPendingIntent = createOpenAppPendingIntent()
+
+        val title = if (connectionStatus is ConnectionStatus.Connected) {
+            "Antigravity Deck 監視中: ${session.status.label}"
+        } else {
+            "Antigravity Deck バックグラウンド待機中"
+        }
+        val body = "${session.title} / ${session.modelName}"
+
+        return NotificationCompat.Builder(appContext, CHANNEL_FOREGROUND)
+            .setSmallIcon(R.drawable.ic_deck_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setContentIntent(contentPendingIntent)
+            .build()
+    }
+
+    fun updateForegroundNotification(
+        session: AgentSession,
+        connectionStatus: ConnectionStatus
+    ) {
+        if (!hasNotificationPermission()) {
+            return
+        }
+        try {
+            managerCompat.notify(
+                FOREGROUND_NOTIFICATION_ID,
+                buildForegroundNotification(session, connectionStatus)
+            )
+        } catch (_: SecurityException) {
+            // 通知権限が取り消されていた場合は無視する
+        }
+    }
+
     fun notifySessionTransition(session: AgentSession) {
         if (session.status == AgentStatus.IDLE || session.status == AgentStatus.THINKING) {
             cancel()
@@ -75,15 +129,7 @@ class DeckNotificationManager(context: Context) {
             return
         }
 
-        val openAppIntent = Intent(appContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val contentPendingIntent = PendingIntent.getActivity(
-            appContext,
-            REQUEST_OPEN_APP,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val contentPendingIntent = createOpenAppPendingIntent()
 
         val builder = when (session.status) {
             AgentStatus.WAITING_APPROVAL -> {
@@ -144,6 +190,18 @@ class DeckNotificationManager(context: Context) {
         }
     }
 
+    private fun createOpenAppPendingIntent(): PendingIntent {
+        val openAppIntent = Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            appContext,
+            REQUEST_OPEN_APP,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     private fun createActionPendingIntent(
         action: String,
         requestCode: Int
@@ -162,6 +220,8 @@ class DeckNotificationManager(context: Context) {
     companion object {
         const val CHANNEL_ALERTS = "deck_alerts"
         const val CHANNEL_STATUS = "deck_status"
+        const val CHANNEL_FOREGROUND = "deck_foreground_service"
+        const val FOREGROUND_NOTIFICATION_ID = 4000
         const val NOTIFICATION_ID = 4001
 
         private const val REQUEST_OPEN_APP = 100

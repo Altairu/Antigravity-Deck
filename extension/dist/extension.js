@@ -80,7 +80,7 @@ async function tryUpdateSettingValue(settingKeys, value, output) {
     return false;
 }
 // Antigravity内部コマンドとVS Code設定へ接続するブリッジを生成する
-function createVsCodeCommandBridge(output) {
+function createVsCodeCommandBridge(output, sessionStore) {
     return {
         async approve(conversationId) {
             const arg = conversationId ? { conversationId } : {};
@@ -106,23 +106,46 @@ function createVsCodeCommandBridge(output) {
             vscode.window.showInformationMessage(`Antigravity Deck: ${prompt}`);
         },
         async setReasoningEffort(effort, conversationId) {
-            const executed = await executeFirstAvailableCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.setReasoningEffort, [{ effort, reasoningEffort: effort, conversationId }], output);
+            const currentState = sessionStore.getState();
+            const modelId = (0, antigravity_bindings_1.resolveAntigravityModelId)(currentState.model_name, effort);
+            const executed = await executeFirstAvailableCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.setReasoningEffort, [
+                {
+                    effort,
+                    reasoningEffort: effort,
+                    model: modelId,
+                    modelId,
+                    modelName: currentState.model_name,
+                    conversationId
+                }
+            ], output);
             if (!executed) {
-                const updated = await tryUpdateSettingValue(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.reasoningEffortSettingKeys, effort, output);
-                if (!updated) {
-                    output.appendLine(`[Bridge] 推論レベルを ${effort} に記録しました`);
+                const updatedEffort = await tryUpdateSettingValue(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.reasoningEffortSettingKeys, effort, output);
+                const updatedModel = await tryUpdateSettingValue(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.modelSettingKeys, modelId, output);
+                if (!updatedEffort && !updatedModel) {
+                    output.appendLine(`[Bridge] 推論レベルを ${effort} (${modelId}) に記録しました`);
                 }
             }
         },
         async setModel(modelName, conversationId) {
-            const executed = await executeFirstAvailableCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.setModel, [{ model: modelName, modelName, conversationId }], output);
+            const currentState = sessionStore.getState();
+            const parsed = (0, antigravity_bindings_1.parseAntigravityModelId)(modelName);
+            const displayModelName = parsed.modelName;
+            const modelId = (0, antigravity_bindings_1.resolveAntigravityModelId)(displayModelName, currentState.reasoning_effort);
+            const executed = await executeFirstAvailableCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.setModel, [
+                {
+                    model: modelId,
+                    modelId,
+                    modelName: displayModelName,
+                    conversationId
+                }
+            ], output);
             if (!executed) {
-                const updated = await tryUpdateSettingValue(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.modelSettingKeys, modelName, output);
+                const updated = await tryUpdateSettingValue(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.modelSettingKeys, modelId, output);
                 if (!updated) {
-                    output.appendLine(`[Bridge] モデルを ${modelName} に記録しました`);
+                    output.appendLine(`[Bridge] モデルを ${displayModelName} (${modelId}) に記録しました`);
                 }
             }
-            vscode.window.showInformationMessage(`Antigravity Deck: モデルを ${modelName} に変更しました`);
+            vscode.window.showInformationMessage(`Antigravity Deck: モデルを ${displayModelName} (${modelId}) に変更しました`);
         }
     };
 }
@@ -141,7 +164,7 @@ async function activate(context) {
     const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBar.command = "antigravityDeck.showPairingQr";
     const sessionStore = new session_store_1.SessionStore();
-    const commandBridge = createVsCodeCommandBridge(output);
+    const commandBridge = createVsCodeCommandBridge(output, sessionStore);
     let currentConfig = readExtensionConfig();
     const updateStatusBar = (wsRunning, clientCount) => {
         if (wsRunning) {

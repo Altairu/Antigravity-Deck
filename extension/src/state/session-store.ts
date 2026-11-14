@@ -4,6 +4,8 @@ import { EventEmitter } from "node:events";
 import {
   AgentStatus,
   DEFAULT_AVAILABLE_MODELS,
+  DEFAULT_MODEL,
+  parseAntigravityModelId,
   ReasoningEffort
 } from "../config/antigravity-bindings";
 
@@ -42,7 +44,7 @@ export class SessionStore extends EventEmitter {
       status: "idle",
       approval_preview: null,
       reasoning_effort: "medium",
-      model_name: "auto",
+      model_name: DEFAULT_MODEL,
       updated_at: new Date().toISOString()
     };
   }
@@ -83,11 +85,15 @@ export class SessionStore extends EventEmitter {
   }
 
   public setModel(modelName: string): AgentSession {
-    const normalized = modelName.trim() || "auto";
+    const parsed = parseAntigravityModelId(modelName);
+    const normalized = parsed.modelName || DEFAULT_MODEL;
     if (!this.availableModels.includes(normalized)) {
       this.availableModels.push(normalized);
     }
-    return this.updateState({ model_name: normalized });
+    return this.updateState({
+      model_name: normalized,
+      ...(parsed.effort ? { reasoning_effort: parsed.effort } : {})
+    });
   }
 
   public recordPrompt(prompt: string): AgentSession {
