@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "publisher": "antigravity-deck",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "homepage": "https://github.com/Altairu/Antigravity-Deck#readme",
+  "bugs": {
+    "url": "https://github.com/Altairu/Antigravity-Deck/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Altairu/Antigravity-Deck"

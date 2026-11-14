@@ -76,3 +76,7 @@ adb reverse tcp:8765 tcp:8765
 ## Lifecycle Hooks 連携
 
 `.agents/hooks.json` では `SessionStart` / `PreInvocation` / `PreToolUse` / `PostToolUse` / `Stop` の各イベントを `.agents/scripts/deck-hook.mjs` へ転送しています。スマホからの応答待ち中にタイムアウトしないよう、`PreToolUse` には `300000` の `timeout` を設定し、スクリプト側の HTTP 待機は `295000` ミリ秒、拡張機能側の保留待機は `290000` ミリ秒に設定しています。接続先のホストやポートを変更する場合は環境変数 `ANTIGRAVITY_DECK_HOOK_HOST` と `ANTIGRAVITY_DECK_HOOK_PORT` を指定してください。
+
+## ライセンス
+
+このプロジェクトは MIT License のもとで公開されています。詳細は [LICENSE](./LICENSE) を参照してください。
