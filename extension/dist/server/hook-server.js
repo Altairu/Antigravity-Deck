@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeckHookServer = void 0;
 const node_http_1 = __importDefault(require("node:http"));
 const antigravity_bindings_1 = require("../config/antigravity-bindings");
+const transcript_reader_1 = require("../state/transcript-reader");
 class DeckHookServer {
     server = null;
     port;
@@ -14,12 +15,15 @@ class DeckHookServer {
     getConnectedClients;
     shouldWaitForMobileApproval;
     onLog;
+    brainRootDir;
+    responseRefreshTimers = new Set();
     constructor(options) {
         this.port = options.port;
         this.sessionStore = options.sessionStore;
         this.getConnectedClients = options.getConnectedClients;
         this.shouldWaitForMobileApproval = options.shouldWaitForMobileApproval;
         this.onLog = options.onLog || (() => { });
+        this.brainRootDir = options.brainRootDir;
     }
     updatePort(port) {
         this.port = port;
@@ -57,6 +61,7 @@ class DeckHookServer {
         });
     }
     async stop() {
+        this.clearResponseRefreshTimers();
         if (!this.server) {
             return;
         }
@@ -112,10 +117,17 @@ class DeckHookServer {
                 this.writeJson(res, 200, decision);
                 return;
             }
+            let lastResponse;
+            if (eventName === "Stop") {
+                this.clearResponseRefreshTimers();
+                lastResponse = await (0, transcript_reader_1.readLatestAgentResponse)(payload.conversationId, this.brainRootDir);
+                this.scheduleDelayedResponseRefresh(payload.conversationId, transition.status);
+            }
             this.sessionStore.updateState({
                 ...(transition.title ? { title: transition.title } : {}),
                 ...(transition.modelName ? { model_name: transition.modelName } : {}),
                 ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
+                ...(lastResponse ? { last_response: lastResponse } : {}),
                 status: transition.status,
                 approval_preview: transition.approvalPreview
             });
@@ -127,6 +139,36 @@ class DeckHookServer {
             return;
         }
         this.writeJson(res, 404, { error: "Not Found" });
+    }
+    clearResponseRefreshTimers() {
+        for (const timer of this.responseRefreshTimers) {
+            clearTimeout(timer);
+        }
+        this.responseRefreshTimers.clear();
+    }
+    // Stopイベント直後のログ書き込み遅延に備えて最新返答を再取得する
+    scheduleDelayedResponseRefresh(conversationId, expectedStatus) {
+        if (!conversationId) {
+            return;
+        }
+        for (const delayMs of [350, 1200]) {
+            const timer = setTimeout(() => {
+                this.responseRefreshTimers.delete(timer);
+                void (0, transcript_reader_1.readLatestAgentResponse)(conversationId, this.brainRootDir).then((refreshed) => {
+                    if (!refreshed) {
+                        return;
+                    }
+                    const current = this.sessionStore.getState();
+                    if (current.status !== expectedStatus) {
+                        return;
+                    }
+                    if (current.last_response !== refreshed) {
+                        this.sessionStore.updateState({ last_response: refreshed });
+                    }
+                });
+            }, delayMs);
+            this.responseRefreshTimers.add(timer);
+        }
     }
     readJsonBody(req) {
         return new Promise((resolve, reject) => {

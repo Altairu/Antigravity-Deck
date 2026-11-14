@@ -17,6 +17,7 @@ class SessionStore extends node_events_1.EventEmitter {
             title: "待機中",
             status: "idle",
             approval_preview: null,
+            last_response: null,
             reasoning_effort: "medium",
             model_name: antigravity_bindings_1.DEFAULT_MODEL,
             updated_at: new Date().toISOString()
@@ -66,7 +67,8 @@ class SessionStore extends node_events_1.EventEmitter {
         return this.updateState({
             title: title || this.session.title,
             status: "thinking",
-            approval_preview: null
+            approval_preview: null,
+            last_response: null
         });
     }
     // スマホ側からの承認待ちPromiseを登録する
@@ -194,7 +196,8 @@ class SessionStore extends node_events_1.EventEmitter {
                     }
                     this.updateState({
                         status: "done",
-                        approval_preview: null
+                        approval_preview: null,
+                        last_response: "結合テストが完了しました。変更箇所のビルドと検証に問題はありません。"
                     });
                 }, finishMs);
                 this.simulationTimers.push(tDone);

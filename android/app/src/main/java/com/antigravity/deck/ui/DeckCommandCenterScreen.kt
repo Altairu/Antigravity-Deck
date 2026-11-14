@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -43,18 +45,25 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Usb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,6 +79,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +88,7 @@ import com.antigravity.deck.DeckUiState
 import com.antigravity.deck.hardware.SpeechUiState
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
+import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.ui.theme.DeckColors
@@ -94,6 +105,9 @@ fun DeckCommandCenterScreen(
     onOpenPairingSheet: () -> Unit,
     onDismissPairingSheet: () -> Unit,
     onSubmitPairingInput: (String) -> Boolean,
+    onOpenNotificationSettings: () -> Unit,
+    onDismissNotificationSettings: () -> Unit,
+    onUpdateNotificationPrefs: (NotificationPreferences) -> Unit,
     onTriggerSimulation: () -> Unit,
     onStartPushToTalk: () -> Unit,
     onStopPushToTalk: () -> Unit
@@ -135,7 +149,7 @@ fun DeckCommandCenterScreen(
         }
     }
 
-    var showTextComposer by remember { mutableStateOf(false) }
+    var showTextComposer by remember { mutableStateOf(true) }
     var textPromptDraft by remember { mutableStateOf("") }
 
     // 思考中カード向けのパルスアニメーションを共有する
@@ -166,6 +180,7 @@ fun DeckCommandCenterScreen(
                 connectionStatus = uiState.connectionStatus,
                 onConnectUsbPreset = onConnectUsbPreset,
                 onOpenPairingSheet = onOpenPairingSheet,
+                onOpenNotificationSettings = onOpenNotificationSettings,
                 onTriggerSimulation = onTriggerSimulation
             )
 
@@ -257,6 +272,14 @@ fun DeckCommandCenterScreen(
             onConnectUsbPreset = onConnectUsbPreset
         )
     }
+
+    if (uiState.showNotificationSettings) {
+        NotificationSettingsDialog(
+            prefs = uiState.notificationPrefs,
+            onUpdate = onUpdateNotificationPrefs,
+            onDismiss = onDismissNotificationSettings
+        )
+    }
 }
 
 @Composable
@@ -264,6 +287,7 @@ private fun TopConnectionBar(
     connectionStatus: ConnectionStatus,
     onConnectUsbPreset: () -> Unit,
     onOpenPairingSheet: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onTriggerSimulation: () -> Unit
 ) {
     val (dotColor, statusText) = when (connectionStatus) {
@@ -326,6 +350,27 @@ private fun TopConnectionBar(
             tint = DeckColors.StatusApproval,
             onClick = onTriggerSimulation
         )
+        Spacer(modifier = Modifier.width(6.dp))
+        Surface(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onOpenNotificationSettings),
+            color = DeckColors.SurfaceElevated,
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, DeckColors.BorderMuted)
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Notifications,
+                    contentDescription = "通知設定",
+                    tint = DeckColors.TextPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
@@ -483,6 +528,10 @@ private fun ApprovalPreviewPanel(
     modifier: Modifier = Modifier
 ) {
     val isWaiting = session.status == AgentStatus.WAITING_APPROVAL
+    val isWaitingApprovalWithPreview = isWaiting && !session.approvalPreview.isNullOrBlank()
+    val hasResponse = !isWaitingApprovalWithPreview &&
+        session.approvalPreview.isNullOrBlank() &&
+        !session.lastResponse.isNullOrBlank()
     val borderColor by animateColorAsState(
         targetValue = if (isWaiting) DeckColors.StatusApproval else DeckColors.BorderMuted,
         animationSpec = tween(durationMillis = 250),
@@ -502,12 +551,16 @@ private fun ApprovalPreviewPanel(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = if (isWaiting) {
-                    "承認待ちプレビュー"
-                } else {
-                    "エージェント出力 / コンテキスト"
+                text = when {
+                    isWaitingApprovalWithPreview || isWaiting -> "承認待ちプレビュー"
+                    hasResponse -> "Antigravity からの返答"
+                    else -> "エージェント出力 / コンテキスト"
                 },
-                color = if (isWaiting) DeckColors.StatusApproval else DeckColors.TextSecondary,
+                color = when {
+                    isWaiting -> DeckColors.StatusApproval
+                    hasResponse -> DeckColors.StatusDone
+                    else -> DeckColors.TextSecondary
+                },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -532,30 +585,39 @@ private fun ApprovalPreviewPanel(
                 )
             }
 
-            // 等幅フォントのプレビューテキストボックス
+            // 返答テキストまたは承認待ちプレビューのスクロール表示領域
             val scrollState = rememberScrollState()
+            LaunchedEffect(session.lastResponse, session.approvalPreview) {
+                scrollState.scrollTo(0)
+            }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF060A12))
-                    .padding(8.dp)
+                    .padding(10.dp)
                     .verticalScroll(scrollState)
             ) {
                 val previewContent = when {
                     !session.approvalPreview.isNullOrBlank() -> session.approvalPreview
+                    !session.lastResponse.isNullOrBlank() -> session.lastResponse
                     session.status == AgentStatus.THINKING -> "エージェントが思考およびツール実行を進めています..."
                     session.status == AgentStatus.DONE -> "タスクは正常に完了しました。"
                     session.status == AgentStatus.ERROR -> "エラー状態になりました。承認または新規プロンプトを送信してください。"
-                    else -> "承認待ちのコマンドや差分はありません。下部のマイクボタン長押し、またはキーボードアイコンからプロンプトを送信できます。"
+                    else -> "承認待ちのコマンドや差分はありません。下部の入力欄またはマイクボタン長押しからプロンプトを送信できます。"
                 }
+                val isMonospace = !session.approvalPreview.isNullOrBlank() || session.lastResponse.isNullOrBlank()
                 Text(
                     text = previewContent,
-                    color = if (isWaiting) DeckColors.TextPrimary else DeckColors.TextSecondary,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
+                    color = if (isWaiting || !session.lastResponse.isNullOrBlank()) {
+                        DeckColors.TextPrimary
+                    } else {
+                        DeckColors.TextSecondary
+                    },
+                    fontFamily = if (isMonospace) FontFamily.Monospace else FontFamily.Default,
+                    fontSize = if (isMonospace) 12.sp else 13.sp,
+                    lineHeight = if (isMonospace) 17.sp else 19.sp
                 )
             }
         }
@@ -590,25 +652,54 @@ private fun CommandDock(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 補助テキスト入力行 (必要時のみ展開)
+        // チャットプロンプト入力行
         if (showTextComposer) {
+            val hasDraft = textPromptDraft.isNotBlank()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = textPromptDraft,
                     onValueChange = onTextDraftChange,
-                    placeholder = { Text("Antigravity へプロンプトを送信") },
+                    placeholder = {
+                        Text(
+                            text = "Antigravity へプロンプトを送信",
+                            color = DeckColors.TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    },
                     singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSendTextPrompt() }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = DeckColors.TextPrimary,
+                        unfocusedTextColor = DeckColors.TextPrimary,
+                        focusedContainerColor = DeckColors.Background,
+                        unfocusedContainerColor = DeckColors.Background,
+                        focusedBorderColor = DeckColors.StatusThinking,
+                        unfocusedBorderColor = DeckColors.BorderMuted,
+                        cursorColor = DeckColors.StatusThinking
+                    ),
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onSendTextPrompt) {
+                FilledIconButton(
+                    onClick = onSendTextPrompt,
+                    enabled = hasDraft,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = DeckColors.AccentBlue,
+                        contentColor = Color.White,
+                        disabledContainerColor = DeckColors.SurfaceElevated,
+                        disabledContentColor = DeckColors.TextSecondary
+                    ),
+                    modifier = Modifier.size(48.dp)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "送信",
-                        tint = DeckColors.StatusThinking
+                        contentDescription = "送信"
                     )
                 }
             }
@@ -863,5 +954,126 @@ private fun ReasoningEffortSelector(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun NotificationSettingsDialog(
+    prefs: NotificationPreferences,
+    onUpdate: (NotificationPreferences) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DeckColors.Surface,
+        titleContentColor = DeckColors.TextPrimary,
+        textContentColor = DeckColors.TextPrimary,
+        title = {
+            Text(
+                text = "通知の詳細設定",
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                NotificationSettingRow(
+                    title = "承認待ちの通知",
+                    description = "コマンド実行やファイル編集の確認待ちを通知",
+                    checked = prefs.notifyOnApproval,
+                    onCheckedChange = {
+                        onUpdate(prefs.copy(notifyOnApproval = it))
+                    }
+                )
+                NotificationSettingRow(
+                    title = "承認通知にプレビュー表示",
+                    description = "承認待ち通知の中に実行コマンドや差分詳細を含める",
+                    checked = prefs.showApprovalPreviewInNotification,
+                    enabled = prefs.notifyOnApproval,
+                    onCheckedChange = {
+                        onUpdate(prefs.copy(showApprovalPreviewInNotification = it))
+                    }
+                )
+                NotificationSettingRow(
+                    title = "会話終了の通知",
+                    description = "エージェントの応答やタスク完了時に通知",
+                    checked = prefs.notifyOnDone,
+                    onCheckedChange = {
+                        onUpdate(prefs.copy(notifyOnDone = it))
+                    }
+                )
+                NotificationSettingRow(
+                    title = "エラー発生の通知",
+                    description = "ツールエラーや異常終了時に通知",
+                    checked = prefs.notifyOnError,
+                    onCheckedChange = {
+                        onUpdate(prefs.copy(notifyOnError = it))
+                    }
+                )
+                NotificationSettingRow(
+                    title = "通知時のバイブレーション",
+                    description = "オンにした通知のタイミングに合わせて振動",
+                    checked = prefs.hapticsEnabled,
+                    onCheckedChange = {
+                        onUpdate(prefs.copy(hapticsEnabled = it))
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "閉じる",
+                    color = DeckColors.StatusThinking,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun NotificationSettingRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (enabled) DeckColors.TextPrimary else DeckColors.TextSecondary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = description,
+                color = DeckColors.TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = DeckColors.AccentBlue,
+                uncheckedThumbColor = DeckColors.TextSecondary,
+                uncheckedTrackColor = DeckColors.Background
+            )
+        )
     }
 }

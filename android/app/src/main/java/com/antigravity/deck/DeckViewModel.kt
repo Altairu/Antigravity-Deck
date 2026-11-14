@@ -7,6 +7,7 @@ import com.antigravity.deck.hardware.PushToTalkManager
 import com.antigravity.deck.hardware.SpeechUiState
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.DeckEndpointConfig
+import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.service.DeckSessionController
@@ -21,9 +22,11 @@ data class DeckUiState(
     val availableModels: List<String> = AgentSession.DEFAULT_AVAILABLE_MODELS,
     val connectionStatus: ConnectionStatus = ConnectionStatus.Disconnected,
     val endpointConfig: DeckEndpointConfig = DeckEndpointConfig.usbLocalhost(),
+    val notificationPrefs: NotificationPreferences = NotificationPreferences(),
     val speechState: SpeechUiState = SpeechUiState(),
     val feedbackBanner: String? = null,
-    val showPairingSheet: Boolean = false
+    val showPairingSheet: Boolean = false,
+    val showNotificationSettings: Boolean = false
 )
 
 // 画面固有の状態と常駐セッションコントローラーの状態を統合するViewModel
@@ -34,20 +37,24 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
         controller.sendPrompt(transcript)
     }
     private val showPairingSheet = MutableStateFlow(false)
+    private val showNotificationSettings = MutableStateFlow(false)
 
     val uiState: StateFlow<DeckUiState> = combine(
         controller.state,
         pushToTalk.state,
-        showPairingSheet
-    ) { snapshot, speech, pairingVisible ->
+        showPairingSheet,
+        showNotificationSettings
+    ) { snapshot, speech, pairingVisible, notificationSettingsVisible ->
         DeckUiState(
             session = snapshot.session,
             availableModels = snapshot.availableModels,
             connectionStatus = snapshot.connectionStatus,
             endpointConfig = snapshot.endpointConfig,
+            notificationPrefs = snapshot.notificationPrefs,
             speechState = speech,
             feedbackBanner = snapshot.feedbackBanner,
-            showPairingSheet = pairingVisible
+            showPairingSheet = pairingVisible,
+            showNotificationSettings = notificationSettingsVisible
         )
     }.stateIn(
         scope = viewModelScope,
@@ -57,6 +64,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             availableModels = controller.state.value.availableModels,
             connectionStatus = controller.state.value.connectionStatus,
             endpointConfig = controller.state.value.endpointConfig,
+            notificationPrefs = controller.state.value.notificationPrefs,
             feedbackBanner = controller.state.value.feedbackBanner
         )
     )
@@ -89,6 +97,18 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closePairingSheet() {
         showPairingSheet.value = false
+    }
+
+    fun openNotificationSettings() {
+        showNotificationSettings.value = true
+    }
+
+    fun closeNotificationSettings() {
+        showNotificationSettings.value = false
+    }
+
+    fun updateNotificationPrefs(prefs: NotificationPreferences) {
+        controller.updateNotificationPrefs(prefs)
     }
 
     fun startPushToTalk() {

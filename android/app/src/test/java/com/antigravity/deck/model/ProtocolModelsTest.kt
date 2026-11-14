@@ -19,6 +19,7 @@ class ProtocolModelsTest {
               "title": "認証修正",
               "status": "waiting_approval",
               "approval_preview": "$ npm test",
+              "last_response": "テストを準備しています。",
               "reasoning_effort": "xhigh",
               "model_name": "Gemini 4 Hydrogen",
               "available_models": ["Gemini 4 Hydrogen", "Gemini 4 Argon", "Claude Sonnet 5.5"]
@@ -34,6 +35,7 @@ class ProtocolModelsTest {
         assertEquals("認証修正", event.session.title)
         assertEquals(AgentStatus.WAITING_APPROVAL, event.session.status)
         assertEquals("$ npm test", event.session.approvalPreview)
+        assertEquals("テストを準備しています。", event.session.lastResponse)
         assertEquals(ReasoningEffort.XHIGH, event.session.reasoningEffort)
         assertEquals("Gemini 4 Hydrogen", event.session.modelName)
     }
@@ -104,5 +106,24 @@ class ProtocolModelsTest {
         assertNotNull(fromWs)
         assertEquals("127.0.0.1", fromWs!!.host)
         assertEquals("antigravity-local", fromWs.token)
+    }
+
+    @Test
+    fun notificationPreferences_filtersByStatusAndHaptics() {
+        val prefs = NotificationPreferences(
+            notifyOnApproval = false,
+            showApprovalPreviewInNotification = false,
+            notifyOnDone = true,
+            notifyOnError = true,
+            hapticsEnabled = true
+        )
+        assertFalse(prefs.shouldNotify(AgentStatus.WAITING_APPROVAL))
+        assertFalse(prefs.shouldVibrate(AgentStatus.WAITING_APPROVAL))
+        assertEquals(true, prefs.shouldNotify(AgentStatus.DONE))
+        assertEquals(true, prefs.shouldVibrate(AgentStatus.DONE))
+
+        val silentPrefs = prefs.copy(hapticsEnabled = false)
+        assertEquals(true, silentPrefs.shouldNotify(AgentStatus.DONE))
+        assertFalse(silentPrefs.shouldVibrate(AgentStatus.DONE))
     }
 }

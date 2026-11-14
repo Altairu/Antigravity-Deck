@@ -41,6 +41,9 @@ class MainActivity : ComponentActivity() {
                     onOpenPairingSheet = deckViewModel::openPairingSheet,
                     onDismissPairingSheet = deckViewModel::closePairingSheet,
                     onSubmitPairingInput = deckViewModel::applyPairingRawInput,
+                    onOpenNotificationSettings = deckViewModel::openNotificationSettings,
+                    onDismissNotificationSettings = deckViewModel::closeNotificationSettings,
+                    onUpdateNotificationPrefs = deckViewModel::updateNotificationPrefs,
                     onTriggerSimulation = deckViewModel::triggerSimulation,
                     onStartPushToTalk = deckViewModel::startPushToTalk,
                     onStopPushToTalk = deckViewModel::stopPushToTalk

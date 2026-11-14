@@ -16,6 +16,7 @@ import com.antigravity.deck.MainActivity
 import com.antigravity.deck.R
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
+import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.network.ConnectionStatus
 
 // エージェントの承認待ちや完了、エラー状態および常駐通知を配信するマネージャー
@@ -119,8 +120,11 @@ class DeckNotificationManager(context: Context) {
         }
     }
 
-    fun notifySessionTransition(session: AgentSession) {
-        if (session.status == AgentStatus.IDLE || session.status == AgentStatus.THINKING) {
+    fun notifySessionTransition(
+        session: AgentSession,
+        prefs: NotificationPreferences = NotificationPreferences()
+    ) {
+        if (!prefs.shouldNotify(session.status)) {
             cancel()
             return
         }
@@ -133,7 +137,11 @@ class DeckNotificationManager(context: Context) {
 
         val builder = when (session.status) {
             AgentStatus.WAITING_APPROVAL -> {
-                val preview = session.approvalPreview ?: "ツール実行の確認待ちです"
+                val preview = if (prefs.showApprovalPreviewInNotification) {
+                    session.approvalPreview ?: "ツール実行の確認待ちです"
+                } else {
+                    "PC側で承認待ちの操作があります"
+                }
                 val approveIntent = createActionPendingIntent(
                     action = NotificationActionReceiver.ACTION_APPROVE,
                     requestCode = REQUEST_APPROVE
@@ -157,10 +165,13 @@ class DeckNotificationManager(context: Context) {
             }
 
             AgentStatus.DONE -> {
+                val summary = session.lastResponse?.takeIf { it.isNotBlank() }
+                    ?: "${session.title} (${session.modelName})"
                 NotificationCompat.Builder(appContext, CHANNEL_STATUS)
                     .setSmallIcon(R.drawable.ic_deck_notification)
-                    .setContentTitle("タスク完了")
-                    .setContentText("${session.title} (${session.modelName})")
+                    .setContentTitle("タスク完了: ${session.title}")
+                    .setContentText(summary)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setAutoCancel(true)
                     .setContentIntent(contentPendingIntent)

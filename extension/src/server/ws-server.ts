@@ -346,6 +346,7 @@ export class DeckWebSocketServer {
       title: session.title,
       status: session.status,
       approval_preview: session.approval_preview,
+      last_response: session.last_response,
       reasoning_effort: session.reasoning_effort,
       model_name: session.model_name,
       available_models: this.sessionStore.getAvailableModels(),

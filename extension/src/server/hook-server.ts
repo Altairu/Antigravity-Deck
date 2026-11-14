@@ -6,6 +6,7 @@ import {
   resolveHookTransition
 } from "../config/antigravity-bindings";
 import { SessionStore } from "../state/session-store";
+import { readLatestAgentResponse } from "../state/transcript-reader";
 
 export interface HookServerOptions {
   port: number;
@@ -13,6 +14,7 @@ export interface HookServerOptions {
   getConnectedClients: () => number;
   shouldWaitForMobileApproval: () => boolean;
   onLog?: (message: string) => void;
+  brainRootDir?: string;
 }
 
 export class DeckHookServer {
@@ -22,6 +24,8 @@ export class DeckHookServer {
   private readonly getConnectedClients: () => number;
   private readonly shouldWaitForMobileApproval: () => boolean;
   private readonly onLog: (message: string) => void;
+  private readonly brainRootDir?: string;
+  private readonly responseRefreshTimers = new Set<NodeJS.Timeout>();
 
   constructor(options: HookServerOptions) {
     this.port = options.port;
@@ -29,6 +33,7 @@ export class DeckHookServer {
     this.getConnectedClients = options.getConnectedClients;
     this.shouldWaitForMobileApproval = options.shouldWaitForMobileApproval;
     this.onLog = options.onLog || (() => {});
+    this.brainRootDir = options.brainRootDir;
   }
 
   public updatePort(port: number): void {
@@ -74,6 +79,7 @@ export class DeckHookServer {
   }
 
   public async stop(): Promise<void> {
+    this.clearResponseRefreshTimers();
     if (!this.server) {
       return;
     }
@@ -149,10 +155,18 @@ export class DeckHookServer {
         return;
       }
 
+      let lastResponse: string | null | undefined;
+      if (eventName === "Stop") {
+        this.clearResponseRefreshTimers();
+        lastResponse = await readLatestAgentResponse(payload.conversationId, this.brainRootDir);
+        this.scheduleDelayedResponseRefresh(payload.conversationId, transition.status);
+      }
+
       this.sessionStore.updateState({
         ...(transition.title ? { title: transition.title } : {}),
         ...(transition.modelName ? { model_name: transition.modelName } : {}),
         ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
+        ...(lastResponse ? { last_response: lastResponse } : {}),
         status: transition.status,
         approval_preview: transition.approvalPreview
       });
@@ -167,6 +181,41 @@ export class DeckHookServer {
     }
 
     this.writeJson(res, 404, { error: "Not Found" });
+  }
+
+  private clearResponseRefreshTimers(): void {
+    for (const timer of this.responseRefreshTimers) {
+      clearTimeout(timer);
+    }
+    this.responseRefreshTimers.clear();
+  }
+
+  // Stopイベント直後のログ書き込み遅延に備えて最新返答を再取得する
+  private scheduleDelayedResponseRefresh(
+    conversationId: string | undefined,
+    expectedStatus: string
+  ): void {
+    if (!conversationId) {
+      return;
+    }
+    for (const delayMs of [350, 1200]) {
+      const timer = setTimeout(() => {
+        this.responseRefreshTimers.delete(timer);
+        void readLatestAgentResponse(conversationId, this.brainRootDir).then((refreshed) => {
+          if (!refreshed) {
+            return;
+          }
+          const current = this.sessionStore.getState();
+          if (current.status !== expectedStatus) {
+            return;
+          }
+          if (current.last_response !== refreshed) {
+            this.sessionStore.updateState({ last_response: refreshed });
+          }
+        });
+      }, delayMs);
+      this.responseRefreshTimers.add(timer);
+    }
   }
 
   private readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {

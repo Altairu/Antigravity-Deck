@@ -40,6 +40,7 @@ data class AgentSession(
     val title: String,
     val status: AgentStatus,
     val approvalPreview: String?,
+    val lastResponse: String? = null,
     val reasoningEffort: ReasoningEffort,
     val modelName: String = DEFAULT_MODEL,
     val updatedAt: String? = null
@@ -74,6 +75,29 @@ data class AgentSession(
                 modelName = DEFAULT_MODEL
             )
         }
+    }
+}
+
+// 通知とバイブレーションの詳細設定
+data class NotificationPreferences(
+    val notifyOnApproval: Boolean = true,
+    val showApprovalPreviewInNotification: Boolean = true,
+    val notifyOnDone: Boolean = true,
+    val notifyOnError: Boolean = true,
+    val hapticsEnabled: Boolean = true
+) {
+    fun shouldNotify(status: AgentStatus): Boolean {
+        return when (status) {
+            AgentStatus.WAITING_APPROVAL -> notifyOnApproval
+            AgentStatus.DONE -> notifyOnDone
+            AgentStatus.ERROR -> notifyOnError
+            AgentStatus.IDLE,
+            AgentStatus.THINKING -> false
+        }
+    }
+
+    fun shouldVibrate(status: AgentStatus): Boolean {
+        return hapticsEnabled && shouldNotify(status)
     }
 }
 
@@ -190,6 +214,11 @@ object ProtocolCodec {
         } else {
             obj.optString("approval_preview").takeIf { it.isNotEmpty() }
         }
+        val lastResponse = if (obj.isNull("last_response")) {
+            null
+        } else {
+            obj.optString("last_response").takeIf { it.isNotBlank() }
+        }
         val effort = ReasoningEffort.parse(obj.optString("reasoning_effort", "medium"))
         val rawModel = obj.optString("model_name", AgentSession.DEFAULT_MODEL)
             .trim()
@@ -204,6 +233,7 @@ object ProtocolCodec {
             title = title,
             status = status,
             approvalPreview = preview,
+            lastResponse = lastResponse,
             reasoningEffort = effort,
             modelName = modelName,
             updatedAt = updatedAt

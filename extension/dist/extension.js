@@ -99,6 +99,32 @@ function createVsCodeCommandBridge(output, sessionStore) {
             vscode.window.showWarningMessage("Antigravity Deck: 実行が拒否されました");
         },
         async sendPrompt(prompt, conversationId) {
+            const registered = new Set(await vscode.commands.getCommands(true));
+            if (registered.has(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatAddContextCommand) &&
+                registered.has(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatTriggerSendCommand)) {
+                if (registered.has(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatPanelFocusCommand)) {
+                    try {
+                        await vscode.commands.executeCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatPanelFocusCommand);
+                    }
+                    catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        output.appendLine(`[Command] パネルフォーカス警告: ${msg}`);
+                    }
+                }
+                try {
+                    await vscode.commands.executeCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatAddContextCommand, prompt);
+                    // Webview側へテキストチャンクが反映されるまで短時間待機してから送信する
+                    await new Promise((resolve) => setTimeout(resolve, 80));
+                    await vscode.commands.executeCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatTriggerSendCommand);
+                    output.appendLine(`[Command] チャット送信成功: ${antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatAddContextCommand} -> ${antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.chatTriggerSendCommand}`);
+                    vscode.window.showInformationMessage(`Antigravity Deck: ${prompt}`);
+                    return;
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    output.appendLine(`[Command] Antigravityチャット送信失敗: ${msg}`);
+                }
+            }
             const executed = await executeFirstAvailableCommand(antigravity_bindings_1.ANTIGRAVITY_COMMAND_BINDINGS.sendPrompt, [{ query: prompt, prompt, conversationId }], output);
             if (!executed) {
                 output.appendLine(`[Bridge] プロンプトを受信: ${prompt}`);

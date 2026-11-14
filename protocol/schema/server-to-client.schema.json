@@ -67,6 +67,13 @@
           ],
           "description": "承認待ちのコマンドやファイル差分の要約テキスト"
         },
+        "last_response": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "エージェントの最新返答テキスト"
+        },
         "reasoning_effort": {
           "$ref": "#/$defs/reasoningEffort"
         },

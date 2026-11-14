@@ -169,6 +169,12 @@ export interface CommandBridge {
 // Antigravityのバージョンや環境差を吸収するため、優先順でコマンドID候補を列挙する
 export const ANTIGRAVITY_COMMAND_BINDINGS = {
   approve: [
+    "antigravity.dynamic.acceptAgentStep",
+    "antigravity.acceptAllChanges",
+    "antigravity.prioritized.agentAcceptAllInFile",
+    "antigravity.prioritized.agentAcceptFocusedHunk",
+    "antigravity.inlineDiff.acceptAll",
+    "antigravity.sideBySide.acceptAll",
     "antigravity.agent.approveStep",
     "antigravity.agent.acceptChanges",
     "antigravity.acceptDiff",
@@ -176,12 +182,21 @@ export const ANTIGRAVITY_COMMAND_BINDINGS = {
     "inlineChat.acceptChanges"
   ],
   reject: [
+    "antigravity.dynamic.rejectAgentStep",
+    "antigravity.rejectAllChanges",
+    "antigravity.prioritized.agentRejectAllInFile",
+    "antigravity.prioritized.agentRejectFocusedHunk",
+    "antigravity.inlineDiff.rejectAll",
+    "antigravity.sideBySide.rejectAll",
     "antigravity.agent.rejectStep",
     "antigravity.agent.rejectChanges",
     "antigravity.rejectDiff",
     "chatEditing.discardAllFiles",
     "inlineChat.discardHunk"
   ],
+  chatPanelFocusCommand: "antigravity.panel.focus",
+  chatAddContextCommand: "antigravity.addContext",
+  chatTriggerSendCommand: "antigravity.triggerSend",
   sendPrompt: [
     "antigravity.agent.sendPrompt",
     "antigravity.chat.send",

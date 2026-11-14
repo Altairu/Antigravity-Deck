@@ -1,7 +1,10 @@
 // PC側WebSocketサーバーおよびHook HTTPサーバーの自動結合テスト
 
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import WebSocket from "ws";
 import { SessionStore } from "../dist/state/session-store.js";
 import { DeckWebSocketServer } from "../dist/server/ws-server.js";
@@ -35,11 +38,14 @@ async function run() {
     commandBridge: bridge
   });
 
+  const tempBrainRoot = await fs.mkdtemp(path.join(os.tmpdir(), "deck-brain-test-"));
+
   const hookServer = new DeckHookServer({
     port: 18766,
     sessionStore: store,
     getConnectedClients: () => wsServer.getConnectedClientCount(),
-    shouldWaitForMobileApproval: () => true
+    shouldWaitForMobileApproval: () => true,
+    brainRootDir: tempBrainRoot
   });
 
   await wsServer.start();
@@ -138,12 +144,63 @@ async function run() {
       "internal model ID should normalize to display name and effort"
     );
 
+    // 6. Stop Hook時にトランスクリプトから最新返答(last_response)が配信されること
+    const logsDir = path.join(tempBrainRoot, "conv-1", ".system_generated", "logs");
+    await fs.mkdir(logsDir, { recursive: true });
+    const transcriptLines = [
+      JSON.stringify({ source: "USER_EXPLICIT", type: "USER_INPUT", content: "テスト質問" }),
+      JSON.stringify({
+        source: "MODEL",
+        type: "PLANNER_RESPONSE",
+        content: "スマートフォンへ返す最新の回答テキストです。"
+      })
+    ].join("\n");
+    await fs.writeFile(path.join(logsDir, "transcript_full.jsonl"), transcriptLines, "utf8");
+
+    await new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        hookEventName: "Stop",
+        conversationId: "conv-1"
+      });
+      const req = http.request(
+        {
+          hostname: "127.0.0.1",
+          port: 18766,
+          path: "/hook",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body)
+          }
+        },
+        (res) => {
+          res.resume();
+          res.on("end", resolve);
+        }
+      );
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
+
+    await new Promise((r) => setTimeout(r, 80));
+    assert.ok(
+      messages.some(
+        (m) =>
+          m.type === "state_sync" &&
+          m.status === "done" &&
+          m.last_response === "スマートフォンへ返す最新の回答テキストです。"
+      ),
+      "last_response should be extracted and broadcast on Stop hook"
+    );
+
     ws.close();
     console.log("EXTENSION_INTEGRATION_TEST_OK");
   } finally {
     store.dispose();
     await hookServer.stop();
     await wsServer.stop();
+    await fs.rm(tempBrainRoot, { recursive: true, force: true });
   }
 }
 

@@ -12,6 +12,7 @@ import com.antigravity.deck.hardware.NotificationActionBus
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
 import com.antigravity.deck.model.DeckEndpointConfig
+import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ProtocolCodec
 import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.model.ServerEvent
@@ -31,6 +32,7 @@ data class DeckSessionSnapshot(
     val availableModels: List<String> = AgentSession.DEFAULT_AVAILABLE_MODELS,
     val connectionStatus: ConnectionStatus = ConnectionStatus.Disconnected,
     val endpointConfig: DeckEndpointConfig = DeckEndpointConfig.usbLocalhost(),
+    val notificationPrefs: NotificationPreferences = NotificationPreferences(),
     val feedbackBanner: String? = null
 )
 
@@ -45,7 +47,13 @@ class DeckSessionController private constructor(
     private val wsClient = DeckWebSocketClient()
 
     private val initialEndpoint = loadSavedEndpoint()
-    private val _state = MutableStateFlow(DeckSessionSnapshot(endpointConfig = initialEndpoint))
+    private val initialNotificationPrefs = loadNotificationPrefs()
+    private val _state = MutableStateFlow(
+        DeckSessionSnapshot(
+            endpointConfig = initialEndpoint,
+            notificationPrefs = initialNotificationPrefs
+        )
+    )
     val state: StateFlow<DeckSessionSnapshot> = _state.asStateFlow()
 
     private var hasReceivedSync = false
@@ -104,6 +112,31 @@ class DeckSessionController private constructor(
             .apply()
     }
 
+    private fun loadNotificationPrefs(): NotificationPreferences {
+        return NotificationPreferences(
+            notifyOnApproval = prefs.getBoolean(KEY_NOTIFY_APPROVAL, true),
+            showApprovalPreviewInNotification = prefs.getBoolean(KEY_NOTIFY_APPROVAL_PREVIEW, true),
+            notifyOnDone = prefs.getBoolean(KEY_NOTIFY_DONE, true),
+            notifyOnError = prefs.getBoolean(KEY_NOTIFY_ERROR, true),
+            hapticsEnabled = prefs.getBoolean(KEY_HAPTICS_ENABLED, true)
+        )
+    }
+
+    fun updateNotificationPrefs(updated: NotificationPreferences) {
+        haptics.triggerSelectionClick()
+        prefs.edit()
+            .putBoolean(KEY_NOTIFY_APPROVAL, updated.notifyOnApproval)
+            .putBoolean(KEY_NOTIFY_APPROVAL_PREVIEW, updated.showApprovalPreviewInNotification)
+            .putBoolean(KEY_NOTIFY_DONE, updated.notifyOnDone)
+            .putBoolean(KEY_NOTIFY_ERROR, updated.notifyOnError)
+            .putBoolean(KEY_HAPTICS_ENABLED, updated.hapticsEnabled)
+            .apply()
+        _state.update { it.copy(notificationPrefs = updated) }
+        if (!updated.shouldNotify(_state.value.session.status)) {
+            notifications.cancel()
+        }
+    }
+
     private fun registerNetworkCallback() {
         val connectivityManager = appContext.getSystemService(ConnectivityManager::class.java) ?: return
         val request = NetworkRequest.Builder()
@@ -158,8 +191,11 @@ class DeckSessionController private constructor(
                 val updated = event.session
 
                 if (hasReceivedSync && prevStatus != updated.status) {
-                    triggerStatusHaptics(updated.status)
-                    notifications.notifySessionTransition(updated)
+                    val currentPrefs = _state.value.notificationPrefs
+                    if (currentPrefs.shouldVibrate(updated.status)) {
+                        triggerStatusHaptics(updated.status)
+                    }
+                    notifications.notifySessionTransition(updated, currentPrefs)
                 }
                 hasReceivedSync = true
 
@@ -311,6 +347,11 @@ class DeckSessionController private constructor(
         private const val KEY_PORT = "endpoint_port"
         private const val KEY_TOKEN = "endpoint_token"
         private const val KEY_LABEL = "endpoint_label"
+        private const val KEY_NOTIFY_APPROVAL = "notify_approval"
+        private const val KEY_NOTIFY_APPROVAL_PREVIEW = "notify_approval_preview"
+        private const val KEY_NOTIFY_DONE = "notify_done"
+        private const val KEY_NOTIFY_ERROR = "notify_error"
+        private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
 
         @Volatile
         private var instance: DeckSessionController? = null
