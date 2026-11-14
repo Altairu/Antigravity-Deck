@@ -3,7 +3,7 @@
   "displayName": "Antigravity Deck",
   "description": "Google Antigravityのエージェント状態をAndroidスマートフォンから監視および承認操作するためのコンパニオン拡張機能",
   "version": "0.1.0",
-  "publisher": "antigravity-deck",
+  "publisher": "Altairu",
   "license": "MIT",
   "icon": "media/icon.png",
   "homepage": "https://github.com/Altairu/Antigravity-Deck#readme",
@@ -19,6 +19,13 @@
   },
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "antigravity",
+    "android",
+    "companion",
+    "remote",
+    "agent"
   ],
   "activationEvents": [
     "onStartupFinished"
