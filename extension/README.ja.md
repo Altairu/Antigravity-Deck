@@ -19,7 +19,7 @@ PC の前から離れているときでも、コマンド実行の承認やチ�
 
 * PC 側の設定: Antigravity IDE の拡張機能パネルから `Altairu.antigravity-deck` (`Antigravity Deck`) をインストールします
 * Android アプリの準備: [GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases) から最新の `antigravity-deck-*.apk` をダウンロードして端末へインストールします
-* Lifecycle Hooks の有効化: 対象ワークスペースに `.agents/hooks.json` と `.agents/scripts/deck-hook.mjs` を配置すると、ツール実行時の承認待機や完了時の返答抽出が連動します
+* Lifecycle Hooks の有効化: コマンドパレットから `Antigravity Deck: Setup Workspace Hooks` を実行するか、ペアリング画面の導入ボタンを押すと、既存のフック設定を保ったまま `.agents/hooks.json` と `.agents/scripts/deck-hook.mjs` が対象ワークスペースへ配置されます
 * スマホとの接続:
   * 同じ Wi-Fi に繋いでいる場合は、コマンドパレットから `Antigravity Deck: Show Pairing QR` を実行し、Android アプリの QR ボタンから読み取ります
   * USB デバッグ接続を使う場合は PC 側で `adb reverse tcp:8765 tcp:8765` を実行し、Android アプリ上部の USB ボタンを押します
@@ -27,6 +27,7 @@ PC の前から離れているときでも、コマンド実行の承認やチ�
 ## コマンドパレット一覧
 
 * `Antigravity Deck: Show Pairing QR`: ペアリング用の QR コードと接続情報を表示します
+* `Antigravity Deck: Setup Workspace Hooks`: 開いているワークスペースへ `.agents/hooks.json` と `.agents/scripts/deck-hook.mjs` を作成またはマージします
 * `Antigravity Deck: Check for Updates`: GitHub Releases 上の新しい `.vsix` が公開されているか確認します
 * `Antigravity Deck: Simulate Agent Lifecycle`: 思考中から承認待ちと完了までの動きをテスト配信します
 * `Antigravity Deck: Start Server`: WebSocket サーバーと Hook 受信サーバーを起動します
@@ -42,6 +43,7 @@ PC の前から離れているときでも、コマンド実行の承認やチ�
 | `antigravityDeck.waitForMobileApproval` | `true` | Android 接続中に `PreToolUse` でスマホからの承認応答を待つか |
 | `antigravityDeck.autoStart` | `true` | IDE 起動時にサーバーを自動で立ち上げるか |
 | `antigravityDeck.autoCheckUpdates` | `true` | 起動時に GitHub Releases の更新を自動確認するか |
+| `antigravityDeck.autoSetupWorkspaceHooks` | `false` | ワークスペースを開いた際に `.agents/hooks.json` と `deck-hook.mjs` を自動配置するか |
 
 ## 関連リンク
 

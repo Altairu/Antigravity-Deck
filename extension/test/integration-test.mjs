@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import { SessionStore } from "../dist/state/session-store.js";
 import { DeckWebSocketServer } from "../dist/server/ws-server.js";
 import { DeckHookServer } from "../dist/server/hook-server.js";
+import { hasWorkspaceHooks, setupWorkspaceHooks } from "../dist/hooks/workspace-hooks.js";
 import { compareSemver, parseLatestVsixRelease } from "../dist/updater/github-release.js";
 
 async function run() {
@@ -40,6 +41,8 @@ async function run() {
   });
 
   const tempBrainRoot = await fs.mkdtemp(path.join(os.tmpdir(), "deck-brain-test-"));
+  const tempFreshWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-fresh-"));
+  const tempMergeWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-merge-"));
 
   const hookServer = new DeckHookServer({
     port: 18766,
@@ -218,6 +221,33 @@ async function run() {
     assert.equal(parsedRelease?.version, "0.2.0");
     assert.equal(parsedRelease?.assetName, "antigravity-deck-0.2.0.vsix");
 
+    // 8. ワークスペースHooks自動導入が新規作成と既存設定マージの両方を正しく処理すること
+    assert.equal(await hasWorkspaceHooks(tempFreshWorkspace), false);
+    const freshResult = await setupWorkspaceHooks(tempFreshWorkspace);
+    assert.equal(freshResult.mergedExisting, false);
+    assert.equal(await hasWorkspaceHooks(tempFreshWorkspace), true);
+    const freshScript = await fs.readFile(freshResult.scriptPath, "utf8");
+    assert.match(freshScript, /8766/);
+
+    await fs.mkdir(path.join(tempMergeWorkspace, ".agents"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempMergeWorkspace, ".agents", "hooks.json"),
+      JSON.stringify({ "custom-hook": { enabled: true } }, null, 2),
+      "utf8"
+    );
+    assert.equal(await hasWorkspaceHooks(tempMergeWorkspace), false);
+    const mergeResult = await setupWorkspaceHooks(tempMergeWorkspace, { hookPort: 18766 });
+    assert.equal(mergeResult.mergedExisting, true);
+    assert.equal(await hasWorkspaceHooks(tempMergeWorkspace), true);
+
+    const mergedHooksJson = JSON.parse(await fs.readFile(mergeResult.hooksJsonPath, "utf8"));
+    assert.deepEqual(mergedHooksJson["custom-hook"], { enabled: true });
+    assert.equal(mergedHooksJson["antigravity-deck"]?.enabled, true);
+    assert.ok(Array.isArray(mergedHooksJson["antigravity-deck"]?.PreToolUse));
+
+    const mergedScript = await fs.readFile(mergeResult.scriptPath, "utf8");
+    assert.match(mergedScript, /18766/);
+
     ws.close();
     console.log("EXTENSION_INTEGRATION_TEST_OK");
   } finally {
@@ -225,6 +255,8 @@ async function run() {
     await hookServer.stop();
     await wsServer.stop();
     await fs.rm(tempBrainRoot, { recursive: true, force: true });
+    await fs.rm(tempFreshWorkspace, { recursive: true, force: true });
+    await fs.rm(tempMergeWorkspace, { recursive: true, force: true });
   }
 }
 

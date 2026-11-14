@@ -19,7 +19,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 
 * PC Extension: Install `Altairu.antigravity-deck` (`Antigravity Deck`) from the Antigravity IDE Extensions panel
 * Android App: Download the latest `antigravity-deck-*.apk` from [GitHub Releases](https://github.com/Altairu/Antigravity-Deck/releases) and install it on your phone
-* Lifecycle Hooks: Place `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` in your workspace to enable tool approval holds and response extraction
+* Lifecycle Hooks: Run `Antigravity Deck: Setup Workspace Hooks` from the Command Palette or click the setup button in the Pairing view to place `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` into your workspace without overwriting existing hooks
 * Connect Your Phone:
   * Over Wi-Fi: Run `Antigravity Deck: Show Pairing QR` from the Command Palette and scan it using the QR button in the Android app
   * Over USB: Run `adb reverse tcp:8765 tcp:8765` on your PC with USB debugging enabled, then tap the USB button in the Android app
@@ -27,6 +27,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 ## Commands
 
 * `Antigravity Deck: Show Pairing QR`: Displays the pairing QR code and connection details
+* `Antigravity Deck: Setup Workspace Hooks`: Creates or merges `.agents/hooks.json` and writes `.agents/scripts/deck-hook.mjs` into open workspace folders
 * `Antigravity Deck: Check for Updates`: Checks GitHub Releases for a newer `.vsix` package
 * `Antigravity Deck: Simulate Agent Lifecycle`: Broadcasts a simulated thinking, approval, and completion sequence
 * `Antigravity Deck: Start Server`: Starts the WebSocket and hook HTTP servers
@@ -42,6 +43,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 | `antigravityDeck.waitForMobileApproval` | `true` | Wait for mobile approval on `PreToolUse` when Android is connected |
 | `antigravityDeck.autoStart` | `true` | Automatically start servers on IDE startup |
 | `antigravityDeck.autoCheckUpdates` | `true` | Automatically check GitHub Releases for extension updates on startup |
+| `antigravityDeck.autoSetupWorkspaceHooks` | `false` | Automatically configure `.agents/hooks.json` and `deck-hook.mjs` when opening a workspace |
 
 ## Links
 

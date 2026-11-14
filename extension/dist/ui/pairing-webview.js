@@ -103,11 +103,13 @@ class PairingWebviewPanel {
     wsPort;
     authToken;
     onSimulateLifecycle;
-    constructor(panel, wsPort, authToken, onSimulateLifecycle) {
+    onSetupWorkspaceHooks;
+    constructor(panel, wsPort, authToken, onSimulateLifecycle, onSetupWorkspaceHooks) {
         this.panel = panel;
         this.wsPort = wsPort;
         this.authToken = authToken;
         this.onSimulateLifecycle = onSimulateLifecycle;
+        this.onSetupWorkspaceHooks = onSetupWorkspaceHooks;
         const candidates = getLanIpv4Candidates();
         this.selectedHost = candidates[0]?.address || "127.0.0.1";
         this.panel.onDidDispose(() => {
@@ -126,12 +128,16 @@ class PairingWebviewPanel {
             else if (message.type === "simulate") {
                 this.onSimulateLifecycle();
             }
+            else if (message.type === "setup_hooks") {
+                this.onSetupWorkspaceHooks?.();
+            }
         });
     }
-    static async show(wsPort, authToken, onSimulateLifecycle) {
+    static async show(wsPort, authToken, onSimulateLifecycle, onSetupWorkspaceHooks) {
         if (PairingWebviewPanel.currentPanel) {
             PairingWebviewPanel.currentPanel.wsPort = wsPort;
             PairingWebviewPanel.currentPanel.authToken = authToken;
+            PairingWebviewPanel.currentPanel.onSetupWorkspaceHooks = onSetupWorkspaceHooks;
             PairingWebviewPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
             await PairingWebviewPanel.currentPanel.render();
             return;
@@ -140,7 +146,7 @@ class PairingWebviewPanel {
             enableScripts: true,
             retainContextWhenHidden: true
         });
-        const instance = new PairingWebviewPanel(panel, wsPort, authToken, onSimulateLifecycle);
+        const instance = new PairingWebviewPanel(panel, wsPort, authToken, onSimulateLifecycle, onSetupWorkspaceHooks);
         PairingWebviewPanel.currentPanel = instance;
         await instance.render();
     }
@@ -246,6 +252,7 @@ class PairingWebviewPanel {
     }
     .actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       margin-top: 12px;
     }
@@ -280,6 +287,7 @@ class PairingWebviewPanel {
       <code>${escapeHtml(wsUrl)}</code>
       <div class="actions">
         <button id="simulateBtn">ライフサイクルをシミュレート</button>
+        <button id="setupHooksBtn" class="secondary">ワークスペース Hooks を導入</button>
         <button id="refreshBtn" class="secondary">IP一覧を再取得</button>
       </div>
     </div>
@@ -301,6 +309,9 @@ class PairingWebviewPanel {
     });
     document.getElementById("simulateBtn").addEventListener("click", () => {
       vscode.postMessage({ type: "simulate" });
+    });
+    document.getElementById("setupHooksBtn").addEventListener("click", () => {
+      vscode.postMessage({ type: "setup_hooks" });
     });
   </script>
 </body>

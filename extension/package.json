@@ -2,7 +2,7 @@
   "name": "antigravity-deck",
   "displayName": "Antigravity Deck",
   "description": "Google Antigravityのエージェント状態をAndroidスマートフォンから監視および承認操作するためのコンパニオン拡張機能",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "publisher": "Altairu",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -52,6 +52,10 @@
       {
         "command": "antigravityDeck.checkForUpdates",
         "title": "Antigravity Deck: Check for Updates"
+      },
+      {
+        "command": "antigravityDeck.setupWorkspaceHooks",
+        "title": "Antigravity Deck: Setup Workspace Hooks"
       }
     ],
     "configuration": {
@@ -86,6 +90,11 @@
           "type": "boolean",
           "default": true,
           "description": "拡張機能の起動時にGitHub Releasesの最新バージョンを自動確認するかどうか"
+        },
+        "antigravityDeck.autoSetupWorkspaceHooks": {
+          "type": "boolean",
+          "default": false,
+          "description": "ワークスペースを開いた際に .agents/hooks.json と deck-hook.mjs を自動配置するかどうか"
         }
       }
     }

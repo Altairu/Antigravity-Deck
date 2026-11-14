@@ -85,6 +85,8 @@ $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 
 ## Lifecycle Hooks 連携
 
+コマンドパレットから `Antigravity Deck: Setup Workspace Hooks` を実行するか、ペアリング画面の導入ボタンを押すと、任意のワークスペースへ `.agents/scripts/deck-hook.mjs` の生成と `.agents/hooks.json` へのマージを自動で行えます。設定の `antigravityDeck.autoSetupWorkspaceHooks` を有効にすれば、ワークスペース起動時の自動導入にも対応します。
+
 `.agents/hooks.json` では `SessionStart` / `PreInvocation` / `PreToolUse` / `PostToolUse` / `Stop` の各イベントを `.agents/scripts/deck-hook.mjs` へ転送しています。スマホからの承認待ち中にタイムアウトしないよう、`PreToolUse` の `timeout` は `300000` ミリ秒、スクリプト側の待機は `295000` ミリ秒、拡張機能側の保留待機は `290000` ミリ秒に設定しています。
 
 ## ライセンス

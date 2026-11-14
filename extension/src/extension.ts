@@ -10,6 +10,7 @@ import {
 } from "./config/antigravity-bindings";
 import { DeckHookServer } from "./server/hook-server";
 import { DeckWebSocketServer } from "./server/ws-server";
+import { setupWorkspaceHooks } from "./hooks/workspace-hooks";
 import { SessionStore } from "./state/session-store";
 import { PairingWebviewPanel } from "./ui/pairing-webview";
 import { checkExtensionUpdates } from "./updater/extension-updater";
@@ -223,7 +224,8 @@ function readExtensionConfig() {
     authToken: cfg.get<string>("authToken", "antigravity-local"),
     waitForMobileApproval: cfg.get<boolean>("waitForMobileApproval", true),
     autoStart: cfg.get<boolean>("autoStart", true),
-    autoCheckUpdates: cfg.get<boolean>("autoCheckUpdates", true)
+    autoCheckUpdates: cfg.get<boolean>("autoCheckUpdates", true),
+    autoSetupWorkspaceHooks: cfg.get<boolean>("autoSetupWorkspaceHooks", false)
   };
 }
 
@@ -294,6 +296,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
 
+  // 開かれているワークスペースへ .agents/hooks.json と deck-hook.mjs を配置する
+  const runSetupWorkspaceHooks = async (silent: boolean) => {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+      if (!silent) {
+        vscode.window.showWarningMessage("ワークスペースフォルダが開かれていません");
+      }
+      return;
+    }
+
+    const latestConfig = readExtensionConfig();
+    const updatedNames: string[] = [];
+
+    for (const folder of folders) {
+      try {
+        const result = await setupWorkspaceHooks(folder.uri.fsPath, {
+          hookPort: latestConfig.hookPort
+        });
+        const modeLabel = result.mergedExisting ? "既存設定へマージ" : "新規作成";
+        output.appendLine(
+          `[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}`
+        );
+        updatedNames.push(folder.name);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        output.appendLine(`[Error] Workspace Hooks 配置失敗 (${folder.name}): ${msg}`);
+        if (!silent) {
+          vscode.window.showErrorMessage(
+            `Antigravity Deck Hooks の配置に失敗しました (${folder.name}): ${msg}`
+          );
+        }
+      }
+    }
+
+    if (!silent && updatedNames.length > 0) {
+      vscode.window.showInformationMessage(
+        `Antigravity Deck の Workspace Hooks を導入しました (${updatedNames.join(", ")})`
+      );
+    }
+  };
+
   const currentVersion =
     typeof context.extension.packageJSON?.version === "string"
       ? context.extension.packageJSON.version
@@ -317,11 +360,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await PairingWebviewPanel.show(
         wsServer.getPort(),
         wsServer.getAuthToken(),
-        triggerSimulation
+        triggerSimulation,
+        () => {
+          void runSetupWorkspaceHooks(false);
+        }
       );
     }),
     vscode.commands.registerCommand("antigravityDeck.simulateLifecycle", () => {
       triggerSimulation();
+    }),
+    vscode.commands.registerCommand("antigravityDeck.setupWorkspaceHooks", async () => {
+      await runSetupWorkspaceHooks(false);
     }),
     vscode.commands.registerCommand("antigravityDeck.checkForUpdates", async () => {
       await checkExtensionUpdates({
@@ -341,6 +390,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateStatusBar(false, 0);
   if (currentConfig.autoStart) {
     await startServers();
+  }
+
+  if (currentConfig.autoSetupWorkspaceHooks) {
+    await runSetupWorkspaceHooks(true);
   }
 
   if (currentConfig.autoCheckUpdates) {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8
+
+* Added `Antigravity Deck: Setup Workspace Hooks` command and pairing panel button to install `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` into any workspace with one click
+* Added `antigravityDeck.autoSetupWorkspaceHooks` setting to optionally set up hooks automatically when opening a workspace
+* 任意のワークスペースへワンクリックで `.agents/hooks.json` と `.agents/scripts/deck-hook.mjs` を導入できる `Antigravity Deck: Setup Workspace Hooks` コマンドとペアリング画面ボタンを追加
+* ワークスペースを開いた際に Hooks を自動配置する `antigravityDeck.autoSetupWorkspaceHooks` 設定を追加
+
 ## 0.1.7
 
 * Added `CHANGELOG.md` for the Open VSX Changes tab

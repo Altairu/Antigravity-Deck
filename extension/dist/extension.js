@@ -40,6 +40,7 @@ const vscode = __importStar(require("vscode"));
 const antigravity_bindings_1 = require("./config/antigravity-bindings");
 const hook_server_1 = require("./server/hook-server");
 const ws_server_1 = require("./server/ws-server");
+const workspace_hooks_1 = require("./hooks/workspace-hooks");
 const session_store_1 = require("./state/session-store");
 const pairing_webview_1 = require("./ui/pairing-webview");
 const extension_updater_1 = require("./updater/extension-updater");
@@ -184,7 +185,8 @@ function readExtensionConfig() {
         authToken: cfg.get("authToken", "antigravity-local"),
         waitForMobileApproval: cfg.get("waitForMobileApproval", true),
         autoStart: cfg.get("autoStart", true),
-        autoCheckUpdates: cfg.get("autoCheckUpdates", true)
+        autoCheckUpdates: cfg.get("autoCheckUpdates", true),
+        autoSetupWorkspaceHooks: cfg.get("autoSetupWorkspaceHooks", false)
     };
 }
 async function activate(context) {
@@ -245,6 +247,38 @@ async function activate(context) {
         sessionStore.simulateAgentLifecycle();
         vscode.window.showInformationMessage("Antigravity Deck でエージェント状態のシミュレーションを開始しました");
     };
+    // 開かれているワークスペースへ .agents/hooks.json と deck-hook.mjs を配置する
+    const runSetupWorkspaceHooks = async (silent) => {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders || folders.length === 0) {
+            if (!silent) {
+                vscode.window.showWarningMessage("ワークスペースフォルダが開かれていません");
+            }
+            return;
+        }
+        const latestConfig = readExtensionConfig();
+        const updatedNames = [];
+        for (const folder of folders) {
+            try {
+                const result = await (0, workspace_hooks_1.setupWorkspaceHooks)(folder.uri.fsPath, {
+                    hookPort: latestConfig.hookPort
+                });
+                const modeLabel = result.mergedExisting ? "既存設定へマージ" : "新規作成";
+                output.appendLine(`[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}`);
+                updatedNames.push(folder.name);
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                output.appendLine(`[Error] Workspace Hooks 配置失敗 (${folder.name}): ${msg}`);
+                if (!silent) {
+                    vscode.window.showErrorMessage(`Antigravity Deck Hooks の配置に失敗しました (${folder.name}): ${msg}`);
+                }
+            }
+        }
+        if (!silent && updatedNames.length > 0) {
+            vscode.window.showInformationMessage(`Antigravity Deck の Workspace Hooks を導入しました (${updatedNames.join(", ")})`);
+        }
+    };
     const currentVersion = typeof context.extension.packageJSON?.version === "string"
         ? context.extension.packageJSON.version
         : "0.1.0";
@@ -258,9 +292,13 @@ async function activate(context) {
         if (!wsServer.isRunning()) {
             await startServers();
         }
-        await pairing_webview_1.PairingWebviewPanel.show(wsServer.getPort(), wsServer.getAuthToken(), triggerSimulation);
+        await pairing_webview_1.PairingWebviewPanel.show(wsServer.getPort(), wsServer.getAuthToken(), triggerSimulation, () => {
+            void runSetupWorkspaceHooks(false);
+        });
     }), vscode.commands.registerCommand("antigravityDeck.simulateLifecycle", () => {
         triggerSimulation();
+    }), vscode.commands.registerCommand("antigravityDeck.setupWorkspaceHooks", async () => {
+        await runSetupWorkspaceHooks(false);
     }), vscode.commands.registerCommand("antigravityDeck.checkForUpdates", async () => {
         await (0, extension_updater_1.checkExtensionUpdates)({
             currentVersion,
@@ -276,6 +314,9 @@ async function activate(context) {
     updateStatusBar(false, 0);
     if (currentConfig.autoStart) {
         await startServers();
+    }
+    if (currentConfig.autoSetupWorkspaceHooks) {
+        await runSetupWorkspaceHooks(true);
     }
     if (currentConfig.autoCheckUpdates) {
         const updateTimer = setTimeout(() => {
