@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -90,7 +92,9 @@ import com.antigravity.deck.i18n.AppLanguage
 import com.antigravity.deck.i18n.LocalDeckStrings
 import com.antigravity.deck.model.AgentSession
 import com.antigravity.deck.model.AgentStatus
+import com.antigravity.deck.model.ArtifactDocument
 import com.antigravity.deck.model.ConversationMessage
+import com.antigravity.deck.model.ConversationSummary
 import com.antigravity.deck.model.MessageRole
 import com.antigravity.deck.model.NotificationPreferences
 import com.antigravity.deck.model.ReasoningEffort
@@ -106,6 +110,7 @@ fun DeckCommandCenterScreen(
     onSendPrompt: (String) -> Unit,
     onSetReasoningEffort: (ReasoningEffort) -> Unit,
     onSetModel: (String) -> Unit,
+    onSelectConversation: (String, String?) -> Unit,
     onConnectUsbPreset: () -> Unit,
     onOpenPairingSheet: () -> Unit,
     onDismissPairingSheet: () -> Unit,
@@ -156,6 +161,7 @@ fun DeckCommandCenterScreen(
     }
 
     var textPromptDraft by remember { mutableStateOf("") }
+    var showConversationPicker by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -213,7 +219,8 @@ fun DeckCommandCenterScreen(
                 session = uiState.session,
                 availableModels = uiState.availableModels,
                 onSetModel = onSetModel,
-                onSetReasoningEffort = onSetReasoningEffort
+                onSetReasoningEffort = onSetReasoningEffort,
+                onOpenConversationPicker = { showConversationPicker = true }
             )
 
             ResponsePanel(
@@ -277,6 +284,18 @@ fun DeckCommandCenterScreen(
             onInstallAvailableUpdate = onInstallAvailableUpdate,
             onTriggerSimulation = onTriggerSimulation,
             onDismiss = onDismissNotificationSettings
+        )
+    }
+
+    if (showConversationPicker) {
+        ConversationPickerDialog(
+            conversations = uiState.session.conversations,
+            currentConversationId = uiState.session.conversationId,
+            onSelect = { item ->
+                showConversationPicker = false
+                onSelectConversation(item.id, item.title)
+            },
+            onDismiss = { showConversationPicker = false }
         )
     }
 }
@@ -381,7 +400,8 @@ private fun AgentStatusCard(
     session: AgentSession,
     availableModels: List<String>,
     onSetModel: (String) -> Unit,
-    onSetReasoningEffort: (ReasoningEffort) -> Unit
+    onSetReasoningEffort: (ReasoningEffort) -> Unit,
+    onOpenConversationPicker: () -> Unit
 ) {
     val s = LocalDeckStrings.current
     val statusColor = when (session.status) {
@@ -439,6 +459,36 @@ private fun AgentStatusCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenConversationPicker),
+                    color = DeckColors.SurfaceElevated,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Forum,
+                            contentDescription = s.conversationSwitchButton,
+                            tint = DeckColors.TextSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = if (session.conversations.isNotEmpty()) {
+                                "${s.conversationSwitchButton} (${session.conversations.size})"
+                            } else {
+                                s.conversationSwitchButton
+                            },
+                            color = DeckColors.TextSecondary,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             Row(
@@ -534,14 +584,22 @@ private fun AgentStatusCard(
 private enum class ResponseTab {
     APPROVAL,
     HISTORY,
+    ARTIFACTS,
     LATEST
 }
 
 private val ISO_TIME_REGEX = Regex("""T(\d{2}:\d{2})""")
+private val ISO_DATE_TIME_REGEX = Regex("""^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})""")
 
 private fun extractShortTime(timestamp: String?): String? {
     if (timestamp.isNullOrBlank()) return null
     return ISO_TIME_REGEX.find(timestamp)?.groupValues?.getOrNull(1)
+}
+
+private fun extractShortDateTime(timestamp: String?): String? {
+    if (timestamp.isNullOrBlank()) return null
+    val match = ISO_DATE_TIME_REGEX.find(timestamp) ?: return null
+    return "${match.groupValues[1]} ${match.groupValues[2]}"
 }
 
 @Composable
@@ -674,18 +732,33 @@ private fun ResponsePanel(
         }
     }
 
-    val tabOptions = remember(isWaiting, s) {
+    val artifactsLabel = if (session.artifacts.isNotEmpty()) {
+        "${s.tabArtifacts} (${session.artifacts.size})"
+    } else {
+        s.tabArtifacts
+    }
+    val tabOptions = remember(isWaiting, s, artifactsLabel) {
         if (isWaiting) {
             listOf(
                 ResponseTab.APPROVAL to s.tabApproval,
-                ResponseTab.HISTORY to s.tabHistory
+                ResponseTab.HISTORY to s.tabHistory,
+                ResponseTab.ARTIFACTS to artifactsLabel
             )
         } else {
             listOf(
                 ResponseTab.HISTORY to s.tabHistory,
+                ResponseTab.ARTIFACTS to artifactsLabel,
                 ResponseTab.LATEST to s.tabLatest
             )
         }
+    }
+
+    var selectedArtifactName by remember(session.conversationId) {
+        mutableStateOf<String?>(null)
+    }
+    val selectedArtifact = remember(session.artifacts, selectedArtifactName) {
+        session.artifacts.firstOrNull { it.name == selectedArtifactName }
+            ?: session.artifacts.firstOrNull()
     }
 
     val historyItems = remember(session.messages, session.lastResponse) {
@@ -705,6 +778,7 @@ private fun ResponsePanel(
     val headerTitle = when (activeTab) {
         ResponseTab.APPROVAL -> s.sectionWaitingApproval
         ResponseTab.HISTORY -> s.sectionConversationHistory
+        ResponseTab.ARTIFACTS -> s.sectionArtifacts
         ResponseTab.LATEST -> when {
             isWaiting -> s.sectionWaitingApproval
             hasResponse -> s.sectionAgentResponse
@@ -769,6 +843,38 @@ private fun ResponsePanel(
                 )
             }
 
+            if (activeTab == ResponseTab.ARTIFACTS && session.artifacts.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    session.artifacts.forEach { artifact ->
+                        val isSelected = selectedArtifact?.name == artifact.name
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { selectedArtifactName = artifact.name },
+                            color = if (isSelected) DeckColors.AccentBlue else DeckColors.SurfaceElevated,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) DeckColors.AccentBlue else DeckColors.BorderMuted
+                            )
+                        ) {
+                            Text(
+                                text = artifact.name,
+                                color = if (isSelected) Color.White else DeckColors.TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(color = DeckColors.BorderMuted)
 
             val scrollState = rememberScrollState()
@@ -778,7 +884,13 @@ private fun ResponsePanel(
                     scrollState.scrollTo(scrollState.maxValue)
                 }
             }
-            LaunchedEffect(activeTab, session.lastResponse, session.approvalPreview) {
+            LaunchedEffect(
+                activeTab,
+                session.lastResponse,
+                session.approvalPreview,
+                selectedArtifact?.name,
+                selectedArtifact?.content
+            ) {
                 if (activeTab != ResponseTab.HISTORY) {
                     scrollState.scrollTo(0)
                 }
@@ -790,58 +902,100 @@ private fun ResponsePanel(
                     .fillMaxWidth()
                     .verticalScroll(scrollState)
             ) {
-                if (activeTab == ResponseTab.HISTORY) {
-                    if (historyItems.isEmpty()) {
-                        Text(
-                            text = s.emptyHistory,
-                            color = DeckColors.TextSecondary,
-                            fontSize = 13.5.sp,
-                            lineHeight = 20.sp
-                        )
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            historyItems.forEach { msg ->
-                                ConversationMessageCard(
-                                    message = msg,
-                                    roleLabel = if (msg.role == MessageRole.USER) s.roleUser else s.roleAssistant
+                when (activeTab) {
+                    ResponseTab.HISTORY -> {
+                        if (historyItems.isEmpty()) {
+                            Text(
+                                text = s.emptyHistory,
+                                color = DeckColors.TextSecondary,
+                                fontSize = 13.5.sp,
+                                lineHeight = 20.sp
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                historyItems.forEach { msg ->
+                                    ConversationMessageCard(
+                                        message = msg,
+                                        roleLabel = if (msg.role == MessageRole.USER) s.roleUser else s.roleAssistant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    ResponseTab.ARTIFACTS -> {
+                        if (selectedArtifact == null) {
+                            Text(
+                                text = s.emptyArtifacts,
+                                color = DeckColors.TextSecondary,
+                                fontSize = 13.5.sp,
+                                lineHeight = 20.sp
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (!selectedArtifact.summary.isNullOrBlank()) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = DeckColors.SurfaceElevated,
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, DeckColors.BorderMuted)
+                                    ) {
+                                        Text(
+                                            text = selectedArtifact.summary,
+                                            color = DeckColors.TextSecondary,
+                                            fontSize = 12.sp,
+                                            lineHeight = 17.sp,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                                MarkdownResponseView(
+                                    markdown = selectedArtifact.content,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
-                } else {
-                    val previewContent = when {
-                        !session.approvalPreview.isNullOrBlank() -> session.approvalPreview
-                        !session.lastResponse.isNullOrBlank() -> session.lastResponse
-                        session.status == AgentStatus.THINKING -> s.emptyThinking
-                        session.status == AgentStatus.DONE -> s.emptyDone
-                        session.status == AgentStatus.ERROR -> s.emptyError
-                        else -> s.emptyIdle
-                    }
-                    val isMonospace = !session.approvalPreview.isNullOrBlank() || session.lastResponse.isNullOrBlank()
-                    if (!isMonospace && !session.lastResponse.isNullOrBlank()) {
-                        MarkdownResponseView(
-                            markdown = session.lastResponse,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        Text(
-                            text = previewContent,
-                            color = if (session.approvalPreview.isNullOrBlank()) {
-                                DeckColors.TextSecondary
-                            } else {
-                                DeckColors.TextPrimary
-                            },
-                            fontFamily = if (!session.approvalPreview.isNullOrBlank()) {
-                                FontFamily.Monospace
-                            } else {
-                                FontFamily.Default
-                            },
-                            fontSize = if (!session.approvalPreview.isNullOrBlank()) 12.sp else 13.5.sp,
-                            lineHeight = 20.sp
-                        )
+
+                    ResponseTab.APPROVAL,
+                    ResponseTab.LATEST -> {
+                        val previewContent = when {
+                            !session.approvalPreview.isNullOrBlank() -> session.approvalPreview
+                            !session.lastResponse.isNullOrBlank() -> session.lastResponse
+                            session.status == AgentStatus.THINKING -> s.emptyThinking
+                            session.status == AgentStatus.DONE -> s.emptyDone
+                            session.status == AgentStatus.ERROR -> s.emptyError
+                            else -> s.emptyIdle
+                        }
+                        val isMonospace = !session.approvalPreview.isNullOrBlank() || session.lastResponse.isNullOrBlank()
+                        if (!isMonospace && !session.lastResponse.isNullOrBlank()) {
+                            MarkdownResponseView(
+                                markdown = session.lastResponse,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = previewContent,
+                                color = if (session.approvalPreview.isNullOrBlank()) {
+                                    DeckColors.TextSecondary
+                                } else {
+                                    DeckColors.TextPrimary
+                                },
+                                fontFamily = if (!session.approvalPreview.isNullOrBlank()) {
+                                    FontFamily.Monospace
+                                } else {
+                                    FontFamily.Default
+                                },
+                                fontSize = if (!session.approvalPreview.isNullOrBlank()) 12.sp else 13.5.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1319,4 +1473,136 @@ private fun SettingSwitchRow(
             )
         )
     }
+}
+
+@Composable
+private fun ConversationPickerDialog(
+    conversations: List<ConversationSummary>,
+    currentConversationId: String?,
+    onSelect: (ConversationSummary) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val s = LocalDeckStrings.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DeckColors.Surface,
+        titleContentColor = DeckColors.TextPrimary,
+        textContentColor = DeckColors.TextPrimary,
+        title = {
+            Text(
+                text = s.conversationPickerTitle,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            if (conversations.isEmpty()) {
+                Text(
+                    text = s.conversationEmpty,
+                    color = DeckColors.TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+            } else {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    conversations.forEach { item ->
+                        val isCurrent = item.id == currentConversationId
+                        val updatedLabel = remember(item.updatedAt) {
+                            extractShortDateTime(item.updatedAt)
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onSelect(item) },
+                            color = if (isCurrent) {
+                                DeckColors.AccentBlue.copy(alpha = 0.12f)
+                            } else {
+                                DeckColors.SurfaceElevated
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isCurrent) DeckColors.AccentBlue else DeckColors.BorderMuted
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = item.title,
+                                        color = DeckColors.TextPrimary,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isCurrent) {
+                                        Surface(
+                                            color = DeckColors.AccentBlue,
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = s.conversationCurrentBadge,
+                                                color = Color.White,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(
+                                                    horizontal = 6.dp,
+                                                    vertical = 2.dp
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = s.conversationMeta(
+                                            item.messageCount,
+                                            item.artifactCount
+                                        ),
+                                        color = DeckColors.TextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                    if (updatedLabel != null) {
+                                        Text(
+                                            text = updatedLabel,
+                                            color = DeckColors.TextSecondary,
+                                            fontSize = 10.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = s.closeButton,
+                    color = DeckColors.AccentBlue,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
 }

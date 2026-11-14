@@ -376,6 +376,20 @@ class DeckSessionController private constructor(
         wsClient.send(ProtocolCodec.commandSetModel(trimmed))
     }
 
+    fun selectConversation(conversationId: String, title: String? = null) {
+        val trimmedId = conversationId.trim()
+        if (trimmedId.isEmpty()) return
+        haptics.triggerSelectionClick()
+        val s = strings()
+        val sent = wsClient.send(ProtocolCodec.commandSelectConversation(trimmedId))
+        val label = title?.trim()?.takeIf { it.isNotEmpty() } ?: trimmedId.take(8)
+        _state.update {
+            it.copy(
+                feedbackBanner = if (sent) s.bannerConversationSwitched(label) else s.bannerNotConnected
+            )
+        }
+    }
+
     fun connectUsbPreset() {
         haptics.triggerSelectionClick()
         hasReceivedSync = false

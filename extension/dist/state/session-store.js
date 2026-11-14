@@ -19,6 +19,9 @@ class SessionStore extends node_events_1.EventEmitter {
             approval_preview: null,
             last_response: null,
             messages: [],
+            conversation_id: null,
+            conversations: [],
+            artifacts: [],
             reasoning_effort: "medium",
             model_name: antigravity_bindings_1.DEFAULT_MODEL,
             updated_at: new Date().toISOString()
@@ -30,7 +33,9 @@ class SessionStore extends node_events_1.EventEmitter {
     getState() {
         return {
             ...this.session,
-            messages: [...this.session.messages]
+            messages: [...this.session.messages],
+            conversations: [...this.session.conversations],
+            artifacts: [...this.session.artifacts]
         };
     }
     getConversationId() {
@@ -39,15 +44,22 @@ class SessionStore extends node_events_1.EventEmitter {
     setConversationId(conversationId) {
         if (conversationId) {
             this.conversationId = conversationId;
+            this.session.conversation_id = conversationId;
         }
     }
     // 単一セッションの状態を更新し変更イベントを発行する
     updateState(patch) {
         const nextMessages = patch.messages ? [...patch.messages] : [...this.session.messages];
+        const nextConversations = patch.conversations
+            ? [...patch.conversations]
+            : [...this.session.conversations];
+        const nextArtifacts = patch.artifacts ? [...patch.artifacts] : [...this.session.artifacts];
         this.session = {
             ...this.session,
             ...patch,
             messages: nextMessages,
+            conversations: nextConversations,
+            artifacts: nextArtifacts,
             updated_at: new Date().toISOString()
         };
         this.emit("state_updated", this.getState());
@@ -182,11 +194,39 @@ class SessionStore extends node_events_1.EventEmitter {
         const autoApproveDelayMs = options?.autoApproveDelayMs ?? 12000;
         const finishMs = options?.finishMs ?? 1500;
         const simStartMessages = this.withAppendedMessage("user", "Antigravity Deck の結合テストを実行して結果を教えて");
+        const simArtifacts = [
+            {
+                name: "implementation_plan.md",
+                title: "Antigravity Deck 結合テスト計画",
+                summary: "シミュレーション用の実装計画サンプルです。",
+                updated_at: new Date().toISOString(),
+                content: [
+                    "# Antigravity Deck 結合テスト計画",
+                    "",
+                    "* WebSocket 状態同期の確認",
+                    "* `PreToolUse` 承認待ちと応答の確認",
+                    "* Markdown アーティファクト表示の確認"
+                ].join("\n")
+            },
+            {
+                name: "task.md",
+                title: "タスク一覧",
+                updated_at: new Date().toISOString(),
+                content: [
+                    "# タスク一覧",
+                    "",
+                    "- [x] PC 側 WebSocket サーバー起動",
+                    "- [ ] Android 側からの承認応答",
+                    "- [ ] 完了レスポンス受信"
+                ].join("\n")
+            }
+        ];
         this.updateState({
             title: "Antigravity Deck 結合テスト",
             status: "thinking",
             approval_preview: null,
-            messages: simStartMessages
+            messages: simStartMessages,
+            artifacts: this.session.artifacts.length > 0 ? this.session.artifacts : simArtifacts
         });
         const t1 = setTimeout(() => {
             if (this.simulationGeneration !== generation) {

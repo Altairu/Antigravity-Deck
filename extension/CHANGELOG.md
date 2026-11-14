@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+* Added saved conversation session list (`conversations`) and remote conversation switching (`select_conversation`) from the Android companion app
+* Added Markdown artifact syncing (`artifacts`) and a dedicated Artifacts viewer tab on Android for inspecting `implementation_plan.md`, `task.md`, and `walkthrough.md`
+* 保存された過去の会話セッション一覧の同期と Android アプリからの会話切り替え (`select_conversation`) に対応
+* `implementation_plan.md` や `task.md` などの生成アーティファクトを同期し、Android アプリ上の成果物タブから Markdown 閲覧できる機能を追加
+
 ## 0.1.9
 
 * Added conversation history timeline (`messages`) synced from Antigravity transcripts to the Android companion app

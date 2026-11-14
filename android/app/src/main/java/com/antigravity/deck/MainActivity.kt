@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
                         onSendPrompt = deckViewModel::sendPrompt,
                         onSetReasoningEffort = deckViewModel::setReasoningEffort,
                         onSetModel = deckViewModel::setModel,
+                        onSelectConversation = deckViewModel::selectConversation,
                         onConnectUsbPreset = deckViewModel::connectUsbPreset,
                         onOpenPairingSheet = deckViewModel::openPairingSheet,
                         onDismissPairingSheet = deckViewModel::closePairingSheet,

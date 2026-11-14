@@ -118,6 +118,9 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setModel(modelName: String) = controller.setModel(modelName)
 
+    fun selectConversation(conversationId: String, title: String? = null) =
+        controller.selectConversation(conversationId, title)
+
     fun connectUsbPreset() = controller.connectUsbPreset()
 
     fun applyPairingRawInput(raw: String): Boolean {

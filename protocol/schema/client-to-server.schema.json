@@ -20,6 +20,9 @@
       "$ref": "#/$defs/setModelCommand"
     },
     {
+      "$ref": "#/$defs/selectConversationCommand"
+    },
+    {
       "$ref": "#/$defs/authCommand"
     }
   ],
@@ -166,6 +169,38 @@
       },
       "required": [
         "model_name"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "selectConversationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "select_conversation"
+        },
+        "action": {
+          "const": "select_conversation"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "切り替え先の会話セッションID"
+        }
+      },
+      "required": [
+        "conversation_id"
       ],
       "anyOf": [
         {

@@ -9,6 +9,8 @@ import { SessionStore } from "../state/session-store";
 import {
   cleanUserInputContent,
   ConversationMessage,
+  listConversations,
+  readConversationArtifacts,
   readConversationHistory,
   readLatestAgentResponse
 } from "../state/transcript-reader";
@@ -135,10 +137,11 @@ export class DeckHookServer {
 
       const transition = resolveHookTransition(payload);
       const eventName = payload.hookEventName || "";
-      const history = await this.loadHistoryWithLastUserInput(
-        payload.conversationId,
-        payload.lastUserInput
-      );
+      const [history, artifacts, conversations] = await Promise.all([
+        this.loadHistoryWithLastUserInput(payload.conversationId, payload.lastUserInput),
+        readConversationArtifacts(payload.conversationId, this.brainRootDir),
+        listConversations(this.brainRootDir)
+      ]);
 
       // PreToolUseかつモバイル承認待ちが有効で、Androidクライアント接続中なら応答を待つ
       const canWaitForMobile =
@@ -149,12 +152,13 @@ export class DeckHookServer {
         this.getConnectedClients() > 0;
 
       if (canWaitForMobile) {
-        if (transition.reasoningEffort || history.length > 0) {
-          this.sessionStore.updateState({
-            ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
-            ...(history.length > 0 ? { messages: history } : {})
-          });
-        }
+        this.sessionStore.updateState({
+          ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
+          ...(history.length > 0 ? { messages: history } : {}),
+          ...(payload.conversationId ? { conversation_id: payload.conversationId } : {}),
+          artifacts,
+          ...(conversations.length > 0 ? { conversations } : {})
+        });
         const preview = transition.approvalPreview || "ツール実行の承認待ち";
         const decision = await this.sessionStore.requestApproval(
           preview,
@@ -180,6 +184,9 @@ export class DeckHookServer {
         ...(transition.reasoningEffort ? { reasoning_effort: transition.reasoningEffort } : {}),
         ...(lastResponse ? { last_response: lastResponse } : {}),
         ...(history.length > 0 ? { messages: history } : {}),
+        ...(payload.conversationId ? { conversation_id: payload.conversationId } : {}),
+        artifacts,
+        ...(conversations.length > 0 ? { conversations } : {}),
         status: transition.status,
         approval_preview: transition.approvalPreview
       });
@@ -233,7 +240,7 @@ export class DeckHookServer {
     this.responseRefreshTimers.clear();
   }
 
-  // Stopイベント直後のログ書き込み遅延に備えて最新返答と会話履歴を再取得する
+  // Stopイベント直後のログ書き込み遅延に備えて最新返答と会話履歴・成果物を再取得する
   private scheduleDelayedResponseRefresh(
     conversationId: string | undefined,
     expectedStatus: string
@@ -246,8 +253,10 @@ export class DeckHookServer {
         this.responseRefreshTimers.delete(timer);
         void Promise.all([
           readLatestAgentResponse(conversationId, this.brainRootDir),
-          readConversationHistory(conversationId, this.brainRootDir)
-        ]).then(([refreshedResponse, refreshedHistory]) => {
+          readConversationHistory(conversationId, this.brainRootDir),
+          readConversationArtifacts(conversationId, this.brainRootDir),
+          listConversations(this.brainRootDir)
+        ]).then(([refreshedResponse, refreshedHistory, refreshedArtifacts, refreshedConversations]) => {
           const current = this.sessionStore.getState();
           if (current.status !== expectedStatus) {
             return;
@@ -257,11 +266,18 @@ export class DeckHookServer {
           const historyChanged =
             refreshedHistory.length > 0 &&
             JSON.stringify(current.messages) !== JSON.stringify(refreshedHistory);
+          const artifactsChanged =
+            JSON.stringify(current.artifacts) !== JSON.stringify(refreshedArtifacts);
+          const conversationsChanged =
+            refreshedConversations.length > 0 &&
+            JSON.stringify(current.conversations) !== JSON.stringify(refreshedConversations);
 
-          if (responseChanged || historyChanged) {
+          if (responseChanged || historyChanged || artifactsChanged || conversationsChanged) {
             this.sessionStore.updateState({
               ...(responseChanged && refreshedResponse ? { last_response: refreshedResponse } : {}),
-              ...(historyChanged ? { messages: refreshedHistory } : {})
+              ...(historyChanged ? { messages: refreshedHistory } : {}),
+              ...(artifactsChanged ? { artifacts: refreshedArtifacts } : {}),
+              ...(conversationsChanged ? { conversations: refreshedConversations } : {})
             });
           }
         });

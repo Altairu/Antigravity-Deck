@@ -8,9 +8,13 @@ import {
   parseAntigravityModelId,
   ReasoningEffort
 } from "../config/antigravity-bindings";
-import { ConversationMessage } from "./transcript-reader";
+import {
+  ArtifactDocument,
+  ConversationMessage,
+  ConversationSummary
+} from "./transcript-reader";
 
-export { ConversationMessage };
+export { ArtifactDocument, ConversationMessage, ConversationSummary };
 
 export interface AgentSession {
   title: string;
@@ -18,6 +22,9 @@ export interface AgentSession {
   approval_preview: string | null;
   last_response: string | null;
   messages: ConversationMessage[];
+  conversation_id: string | null;
+  conversations: ConversationSummary[];
+  artifacts: ArtifactDocument[];
   reasoning_effort: ReasoningEffort;
   model_name: string;
   updated_at: string;
@@ -50,6 +57,9 @@ export class SessionStore extends EventEmitter {
       approval_preview: null,
       last_response: null,
       messages: [],
+      conversation_id: null,
+      conversations: [],
+      artifacts: [],
       reasoning_effort: "medium",
       model_name: DEFAULT_MODEL,
       updated_at: new Date().toISOString()
@@ -63,7 +73,9 @@ export class SessionStore extends EventEmitter {
   public getState(): AgentSession {
     return {
       ...this.session,
-      messages: [...this.session.messages]
+      messages: [...this.session.messages],
+      conversations: [...this.session.conversations],
+      artifacts: [...this.session.artifacts]
     };
   }
 
@@ -74,6 +86,7 @@ export class SessionStore extends EventEmitter {
   public setConversationId(conversationId?: string): void {
     if (conversationId) {
       this.conversationId = conversationId;
+      this.session.conversation_id = conversationId;
     }
   }
 
@@ -82,10 +95,16 @@ export class SessionStore extends EventEmitter {
     patch: Partial<Omit<AgentSession, "updated_at">>
   ): AgentSession {
     const nextMessages = patch.messages ? [...patch.messages] : [...this.session.messages];
+    const nextConversations = patch.conversations
+      ? [...patch.conversations]
+      : [...this.session.conversations];
+    const nextArtifacts = patch.artifacts ? [...patch.artifacts] : [...this.session.artifacts];
     this.session = {
       ...this.session,
       ...patch,
       messages: nextMessages,
+      conversations: nextConversations,
+      artifacts: nextArtifacts,
       updated_at: new Date().toISOString()
     };
     this.emit("state_updated", this.getState());
@@ -252,12 +271,40 @@ export class SessionStore extends EventEmitter {
       "user",
       "Antigravity Deck の結合テストを実行して結果を教えて"
     );
+    const simArtifacts: ArtifactDocument[] = [
+      {
+        name: "implementation_plan.md",
+        title: "Antigravity Deck 結合テスト計画",
+        summary: "シミュレーション用の実装計画サンプルです。",
+        updated_at: new Date().toISOString(),
+        content: [
+          "# Antigravity Deck 結合テスト計画",
+          "",
+          "* WebSocket 状態同期の確認",
+          "* `PreToolUse` 承認待ちと応答の確認",
+          "* Markdown アーティファクト表示の確認"
+        ].join("\n")
+      },
+      {
+        name: "task.md",
+        title: "タスク一覧",
+        updated_at: new Date().toISOString(),
+        content: [
+          "# タスク一覧",
+          "",
+          "- [x] PC 側 WebSocket サーバー起動",
+          "- [ ] Android 側からの承認応答",
+          "- [ ] 完了レスポンス受信"
+        ].join("\n")
+      }
+    ];
 
     this.updateState({
       title: "Antigravity Deck 結合テスト",
       status: "thinking",
       approval_preview: null,
-      messages: simStartMessages
+      messages: simStartMessages,
+      artifacts: this.session.artifacts.length > 0 ? this.session.artifacts : simArtifacts
     });
 
     const t1 = setTimeout(() => {

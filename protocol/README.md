@@ -79,6 +79,9 @@ sequenceDiagram
 * `approval_preview`: 実行予定のコマンドや変更ファイル差分の要約文字列、または `null`
 * `last_response`: エージェントの最新返答テキスト、または `null`
 * `messages`: `{ "role": "user" | "assistant", "content": string, "timestamp"?: string }` で構成される会話履歴配列
+* `conversation_id`: 現在表示中の会話セッション ID または `null`
+* `conversations`: 切り替え可能な会話セッション概要配列 (`id`, `title`, `updated_at`?, `message_count`, `artifact_count`)
+* `artifacts`: 現在の会話に紐づく Markdown アーティファクト配列 (`name`, `title`, `content`, `summary`?, `updated_at`?)
 * `reasoning_effort`: `low` / `medium` / `high` / `xhigh` のいずれか
 * `model_name`: セッションで現在利用中のAIモデル識別子文字列
 * `available_models`: 選択可能なAIモデル一覧配列
@@ -92,3 +95,4 @@ sequenceDiagram
 * `send_prompt`: 音声入力やテキストから取得した `prompt` をエージェントへ送信する
 * `set_reasoning_effort`: `reasoning_effort` を変更する
 * `set_model`: `model_name` を指定したAIモデルへ切り替える
+* `select_conversation`: `conversation_id` で指定した過去の会話セッションへ切り替える

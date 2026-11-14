@@ -157,4 +157,62 @@ class ProtocolModelsTest {
         assertEquals(MessageRole.ASSISTANT, messages[1].role)
         assertEquals("修正が完了しました。", messages[1].content)
     }
+
+    @Test
+    fun decodeStateSync_parsesConversationsAndArtifacts() {
+        val raw = """
+            {
+              "type": "state_sync",
+              "timestamp": "2026-11-15T03:00:00.000Z",
+              "title": "アーティファクト同期",
+              "status": "done",
+              "approval_preview": null,
+              "conversation_id": "conv-1",
+              "conversations": [
+                {
+                  "id": "conv-1",
+                  "title": "セッション機能",
+                  "updated_at": "2026-11-15T03:00:00Z",
+                  "message_count": 4,
+                  "artifact_count": 2
+                },
+                {
+                  "id": "conv-2",
+                  "title": "前回の調査",
+                  "message_count": 2,
+                  "artifact_count": 0
+                }
+              ],
+              "artifacts": [
+                {
+                  "name": "implementation_plan.md",
+                  "title": "実装計画",
+                  "content": "# 実装計画\n\n詳細です。",
+                  "summary": "計画書の要約",
+                  "updated_at": "2026-11-15T02:59:00Z"
+                }
+              ],
+              "reasoning_effort": "high",
+              "model_name": "Gemini 4 Hydrogen"
+            }
+        """.trimIndent()
+
+        val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
+        assertNotNull(event)
+        val session = event!!.session
+        assertEquals("conv-1", session.conversationId)
+        assertEquals(2, session.conversations.size)
+        assertEquals("セッション機能", session.conversations[0].title)
+        assertEquals(4, session.conversations[0].messageCount)
+        assertEquals(2, session.conversations[0].artifactCount)
+
+        assertEquals(1, session.artifacts.size)
+        assertEquals("implementation_plan.md", session.artifacts[0].name)
+        assertEquals("実装計画", session.artifacts[0].title)
+        assertEquals("計画書の要約", session.artifacts[0].summary)
+
+        val cmd = JSONObject(ProtocolCodec.commandSelectConversation("conv-2"))
+        assertEquals("select_conversation", cmd.getString("type"))
+        assertEquals("conv-2", cmd.getString("conversation_id"))
+    }
 }

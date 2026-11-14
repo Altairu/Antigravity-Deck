@@ -10,7 +10,11 @@ import { SessionStore } from "../dist/state/session-store.js";
 import { DeckWebSocketServer } from "../dist/server/ws-server.js";
 import { DeckHookServer } from "../dist/server/hook-server.js";
 import { hasWorkspaceHooks, setupWorkspaceHooks } from "../dist/hooks/workspace-hooks.js";
-import { readConversationHistory } from "../dist/state/transcript-reader.js";
+import {
+  listConversations,
+  readConversationArtifacts,
+  readConversationHistory
+} from "../dist/state/transcript-reader.js";
 import { compareSemver, parseLatestVsixRelease } from "../dist/updater/github-release.js";
 
 async function run() {
@@ -150,9 +154,25 @@ async function run() {
       "internal model ID should normalize to display name and effort"
     );
 
-    // 6. Stop Hook時にトランスクリプトから最新返答(last_response)と会話履歴(messages)が配信されること
-    const logsDir = path.join(tempBrainRoot, "conv-1", ".system_generated", "logs");
+    // 6. Stop Hook時にトランスクリプトから最新返答(last_response)、会話履歴(messages)、成果物(artifacts)が配信されること
+    const conv1Dir = path.join(tempBrainRoot, "conv-1");
+    const logsDir = path.join(conv1Dir, ".system_generated", "logs");
     await fs.mkdir(logsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(conv1Dir, "implementation_plan.md"),
+      "# 実装計画\n\n* 機能Aを実装する\n",
+      "utf8"
+    );
+    await fs.writeFile(
+      path.join(conv1Dir, "implementation_plan.md.metadata.json"),
+      JSON.stringify({
+        summary: "機能Aの実装計画書",
+        updatedAt: "2026-11-15T01:00:00Z"
+      }),
+      "utf8"
+    );
+    await fs.writeFile(path.join(conv1Dir, "task.md"), "# タスク一覧\n\n- [x] Step 1\n", "utf8");
+
     const transcriptLines = [
       JSON.stringify({
         source: "USER_EXPLICIT",
@@ -187,6 +207,34 @@ async function run() {
     ].join("\n");
     await fs.writeFile(path.join(logsDir, "transcript_full.jsonl"), transcriptLines, "utf8");
 
+    // 2件目の過去セッションも用意しておく
+    const conv2Dir = path.join(tempBrainRoot, "conv-2");
+    const conv2LogsDir = path.join(conv2Dir, ".system_generated", "logs");
+    await fs.mkdir(conv2LogsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(conv2Dir, "walkthrough.md"),
+      "# 過去の作業記録\n\n修正とテストを完了しました。\n",
+      "utf8"
+    );
+    await fs.writeFile(
+      path.join(conv2LogsDir, "transcript_full.jsonl"),
+      [
+        JSON.stringify({
+          source: "USER_EXPLICIT",
+          type: "USER_INPUT",
+          content: "<USER_REQUEST>\n前回のバグを直して\n</USER_REQUEST>",
+          created_at: "2026-11-14T20:00:00Z"
+        }),
+        JSON.stringify({
+          source: "MODEL",
+          type: "PLANNER_RESPONSE",
+          content: "前回のバグを修正しました。",
+          created_at: "2026-11-14T20:01:00Z"
+        })
+      ].join("\n"),
+      "utf8"
+    );
+
     await new Promise((resolve, reject) => {
       const body = JSON.stringify({
         hookEventName: "Stop",
@@ -213,7 +261,7 @@ async function run() {
       req.end();
     });
 
-    await new Promise((r) => setTimeout(r, 80));
+    await new Promise((r) => setTimeout(r, 100));
     const stopSync = [...messages]
       .reverse()
       .find(
@@ -223,6 +271,7 @@ async function run() {
           m.last_response === "スマートフォンへ返す最新の回答テキストです。"
       );
     assert.ok(stopSync, "last_response should be extracted and broadcast on Stop hook");
+    assert.equal(stopSync.conversation_id, "conv-1");
     assert.ok(Array.isArray(stopSync.messages), "state_sync should include messages array");
     assert.deepEqual(
       stopSync.messages.map((item) => ({ role: item.role, content: item.content })),
@@ -233,9 +282,43 @@ async function run() {
         { role: "assistant", content: "スマートフォンへ返す最新の回答テキストです。" }
       ]
     );
+    assert.ok(Array.isArray(stopSync.artifacts), "state_sync should include artifacts array");
+    assert.equal(stopSync.artifacts.length, 2);
+    assert.equal(stopSync.artifacts[0].name, "implementation_plan.md");
+    assert.equal(stopSync.artifacts[0].title, "実装計画");
+    assert.equal(stopSync.artifacts[0].summary, "機能Aの実装計画書");
+    assert.equal(stopSync.artifacts[1].name, "task.md");
+
+    assert.ok(Array.isArray(stopSync.conversations), "state_sync should include conversations list");
+    assert.equal(stopSync.conversations.length, 2);
+    assert.ok(stopSync.conversations.some((c) => c.id === "conv-1" && c.artifact_count === 2));
+    assert.ok(stopSync.conversations.some((c) => c.id === "conv-2" && c.artifact_count === 1));
 
     const autoHistory = await readConversationHistory(undefined, tempBrainRoot);
-    assert.equal(autoHistory.length, 4);
+    assert.ok(autoHistory.length >= 2);
+    const listed = await listConversations(tempBrainRoot);
+    assert.equal(listed.length, 2);
+    const conv1Artifacts = await readConversationArtifacts("conv-1", tempBrainRoot);
+    assert.equal(conv1Artifacts.length, 2);
+
+    // 6.5. select_conversationコマンドで別セッション(conv-2)の履歴・成果物へ切り替えられること
+    ws.send(JSON.stringify({ type: "select_conversation", conversation_id: "conv-2" }));
+    await new Promise((r) => setTimeout(r, 120));
+    const switchedSync = [...messages]
+      .reverse()
+      .find((m) => m.type === "state_sync" && m.conversation_id === "conv-2");
+    assert.ok(switchedSync, "select_conversation should broadcast switched session state");
+    assert.equal(switchedSync.last_response, "前回のバグを修正しました。");
+    assert.deepEqual(
+      switchedSync.messages.map((item) => ({ role: item.role, content: item.content })),
+      [
+        { role: "user", content: "前回のバグを直して" },
+        { role: "assistant", content: "前回のバグを修正しました。" }
+      ]
+    );
+    assert.equal(switchedSync.artifacts.length, 1);
+    assert.equal(switchedSync.artifacts[0].name, "walkthrough.md");
+    assert.equal(switchedSync.artifacts[0].title, "過去の作業記録");
 
     // 7. GitHub Releasesバージョンの比較とアセット解析が正しく動くこと
     assert.ok(compareSemver("0.1.0", "v0.2.0") < 0);

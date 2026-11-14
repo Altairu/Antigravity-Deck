@@ -7,7 +7,13 @@ import {
   normalizeReasoningEffort
 } from "../config/antigravity-bindings";
 import { AgentSession, SessionStore } from "../state/session-store";
-import { readConversationHistory } from "../state/transcript-reader";
+import {
+  findLatestConversationId,
+  listConversations,
+  readConversationArtifacts,
+  readConversationHistory,
+  readLatestAgentResponse
+} from "../state/transcript-reader";
 
 interface ClientMeta {
   authenticated: boolean;
@@ -334,6 +340,36 @@ export class DeckWebSocketServer {
         break;
       }
 
+      case "select_conversation": {
+        const targetId =
+          typeof parsed.conversation_id === "string" ? parsed.conversation_id.trim() : "";
+        if (!targetId) {
+          return;
+        }
+        this.sessionStore.setConversationId(targetId);
+        const { history, latestResponse, artifacts, conversations } =
+          await this.loadConversationSnapshot(targetId);
+        const summary = conversations.find((c) => c.id === targetId);
+        const lastUserText = [...history].reverse().find((m) => m.role === "user")?.content;
+        const lastAssistantText =
+          [...history].reverse().find((m) => m.role === "assistant")?.content || null;
+        const normalizedUserTitle = lastUserText
+          ? lastUserText.replace(/\s+/g, " ").trim().slice(0, 48)
+          : undefined;
+        const nextTitle = summary?.title || normalizedUserTitle;
+
+        this.sessionStore.updateState({
+          ...(nextTitle ? { title: nextTitle } : {}),
+          conversation_id: targetId,
+          last_response: latestResponse || lastAssistantText,
+          messages: history,
+          artifacts,
+          conversations
+        });
+        this.onLog(`会話セッションを切り替えました: ${targetId}`);
+        break;
+      }
+
       case "request_sync": {
         this.sendStateSync(ws);
         break;
@@ -353,6 +389,9 @@ export class DeckWebSocketServer {
       approval_preview: session.approval_preview,
       last_response: session.last_response,
       messages: session.messages,
+      conversation_id: session.conversation_id,
+      conversations: session.conversations,
+      artifacts: session.artifacts,
       reasoning_effort: session.reasoning_effort,
       model_name: session.model_name,
       available_models: this.sessionStore.getAvailableModels(),
@@ -360,45 +399,71 @@ export class DeckWebSocketServer {
     };
   }
 
+  private async loadConversationSnapshot(conversationId?: string) {
+    const [history, latestResponse, artifacts, conversations] = await Promise.all([
+      readConversationHistory(conversationId, this.brainRootDir),
+      readLatestAgentResponse(conversationId, this.brainRootDir),
+      readConversationArtifacts(conversationId, this.brainRootDir),
+      listConversations(this.brainRootDir)
+    ]);
+    return { history, latestResponse, artifacts, conversations };
+  }
+
   private sendStateSync(ws: WebSocket): void {
     const state = this.sessionStore.getState();
     this.sendJson(ws, this.buildStateSyncPayload(state));
-    if (state.messages.length === 0) {
+    if (state.messages.length === 0 || state.conversations.length === 0) {
       this.hydrateHistoryIfEmpty();
     }
   }
 
-  // セッション履歴が空のときにローカルログから会話履歴を復元して配信する
+  // セッション履歴や成果物が空のときにローカルログから復元して配信する
   private hydrateHistoryIfEmpty(): void {
     if (this.historyHydrationInFlight) {
       return;
     }
     this.historyHydrationInFlight = true;
-    const targetConversationId = this.sessionStore.getConversationId();
 
-    void readConversationHistory(targetConversationId, this.brainRootDir)
-      .then((history) => {
-        if (history.length === 0) {
-          return;
-        }
+    void (async () => {
+      try {
+        const resolvedId =
+          this.sessionStore.getConversationId() ||
+          (await findLatestConversationId(this.brainRootDir));
+        const { history, latestResponse, artifacts, conversations } =
+          await this.loadConversationSnapshot(resolvedId);
+
         const current = this.sessionStore.getState();
-        if (current.messages.length > 0) {
+        if (current.messages.length > 0 && current.conversations.length > 0) {
           return;
         }
-        const lastAssistant = [...history]
-          .reverse()
-          .find((item) => item.role === "assistant")?.content;
+        if (history.length === 0 && artifacts.length === 0 && conversations.length === 0) {
+          return;
+        }
+
+        if (resolvedId) {
+          this.sessionStore.setConversationId(resolvedId);
+        }
+        const summary = resolvedId ? conversations.find((c) => c.id === resolvedId) : undefined;
+        const lastAssistant =
+          latestResponse ||
+          [...history].reverse().find((item) => item.role === "assistant")?.content;
+
         this.sessionStore.updateState({
+          ...(current.title === "待機中" && summary?.title ? { title: summary.title } : {}),
+          ...(resolvedId ? { conversation_id: resolvedId } : {}),
           ...(lastAssistant && !current.last_response ? { last_response: lastAssistant } : {}),
-          messages: history
+          ...(current.messages.length === 0 && history.length > 0 ? { messages: history } : {}),
+          ...(current.artifacts.length === 0 && artifacts.length > 0 ? { artifacts } : {}),
+          ...(current.conversations.length === 0 && conversations.length > 0
+            ? { conversations }
+            : {})
         });
-      })
-      .catch(() => {
+      } catch {
         // 履歴読み取りに失敗した場合は現在状態のまま継続する
-      })
-      .finally(() => {
+      } finally {
         this.historyHydrationInFlight = false;
-      });
+      }
+    })();
   }
 
   private broadcast(payload: unknown): void {

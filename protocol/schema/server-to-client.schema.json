@@ -81,6 +81,27 @@
           },
           "description": "ユーザーとエージェントの会話履歴一覧"
         },
+        "conversation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "現在表示中の会話セッションID"
+        },
+        "conversations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conversationSummary"
+          },
+          "description": "切り替え可能な会話セッション概要一覧"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactDocument"
+          },
+          "description": "選択中セッションで生成されたMarkdownアーティファクト一覧"
+        },
         "reasoning_effort": {
           "$ref": "#/$defs/reasoningEffort"
         },
@@ -121,6 +142,61 @@
           "type": "string"
         },
         "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "conversationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "message_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "artifactDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "title",
+        "content"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }

@@ -54,6 +54,24 @@ data class ConversationMessage(
     val timestamp: String? = null
 )
 
+// 過去の会話セッション一覧用の概要データ
+data class ConversationSummary(
+    val id: String,
+    val title: String,
+    val updatedAt: String? = null,
+    val messageCount: Int = 0,
+    val artifactCount: Int = 0
+)
+
+// 会話内で生成されたMarkdownアーティファクト
+data class ArtifactDocument(
+    val name: String,
+    val title: String,
+    val content: String,
+    val summary: String? = null,
+    val updatedAt: String? = null
+)
+
 // 単一エージェントの状態モデル
 data class AgentSession(
     val title: String,
@@ -63,7 +81,10 @@ data class AgentSession(
     val reasoningEffort: ReasoningEffort,
     val modelName: String = DEFAULT_MODEL,
     val updatedAt: String? = null,
-    val messages: List<ConversationMessage> = emptyList()
+    val messages: List<ConversationMessage> = emptyList(),
+    val conversationId: String? = null,
+    val conversations: List<ConversationSummary> = emptyList(),
+    val artifacts: List<ArtifactDocument> = emptyList()
 ) {
     companion object {
         const val DEFAULT_MODEL = "Gemini 4 Hydrogen"
@@ -250,6 +271,13 @@ object ProtocolCodec {
         }
         val updatedAt = if (obj.isNull("updated_at")) null else obj.optString("updated_at")
         val messages = parseMessages(obj.optJSONArray("messages"))
+        val conversationId = if (obj.isNull("conversation_id")) {
+            null
+        } else {
+            obj.optString("conversation_id").takeIf { it.isNotBlank() }
+        }
+        val conversations = parseConversations(obj.optJSONArray("conversations"))
+        val artifacts = parseArtifacts(obj.optJSONArray("artifacts"))
         return AgentSession(
             title = title,
             status = status,
@@ -258,8 +286,73 @@ object ProtocolCodec {
             reasoningEffort = effort,
             modelName = modelName,
             updatedAt = updatedAt,
-            messages = messages
+            messages = messages,
+            conversationId = conversationId,
+            conversations = conversations,
+            artifacts = artifacts
         )
+    }
+
+    private fun parseConversations(array: JSONArray?): List<ConversationSummary> {
+        if (array == null || array.length() == 0) {
+            return emptyList()
+        }
+        return buildList {
+            for (idx in 0 until array.length()) {
+                val item = array.optJSONObject(idx) ?: continue
+                val id = item.optString("id", "").trim()
+                if (id.isEmpty()) continue
+                val title = item.optString("title", "").trim().ifBlank { id.take(8) }
+                val updatedAt = if (item.isNull("updated_at")) {
+                    null
+                } else {
+                    item.optString("updated_at").takeIf { it.isNotBlank() }
+                }
+                add(
+                    ConversationSummary(
+                        id = id,
+                        title = title,
+                        updatedAt = updatedAt,
+                        messageCount = item.optInt("message_count", 0).coerceAtLeast(0),
+                        artifactCount = item.optInt("artifact_count", 0).coerceAtLeast(0)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseArtifacts(array: JSONArray?): List<ArtifactDocument> {
+        if (array == null || array.length() == 0) {
+            return emptyList()
+        }
+        return buildList {
+            for (idx in 0 until array.length()) {
+                val item = array.optJSONObject(idx) ?: continue
+                val name = item.optString("name", "").trim()
+                val content = item.optString("content", "").trim()
+                if (name.isEmpty() || content.isEmpty()) continue
+                val title = item.optString("title", "").trim().ifBlank { name }
+                val summary = if (item.isNull("summary")) {
+                    null
+                } else {
+                    item.optString("summary").takeIf { it.isNotBlank() }
+                }
+                val updatedAt = if (item.isNull("updated_at")) {
+                    null
+                } else {
+                    item.optString("updated_at").takeIf { it.isNotBlank() }
+                }
+                add(
+                    ArtifactDocument(
+                        name = name,
+                        title = title,
+                        content = content,
+                        summary = summary,
+                        updatedAt = updatedAt
+                    )
+                )
+            }
+        }
     }
 
     private fun parseMessages(messagesArray: JSONArray?): List<ConversationMessage> {
@@ -320,6 +413,12 @@ object ProtocolCodec {
     fun commandSimulateLifecycle(): String =
         JSONObject()
             .put("type", "simulate_lifecycle")
+            .toString()
+
+    fun commandSelectConversation(conversationId: String): String =
+        JSONObject()
+            .put("type", "select_conversation")
+            .put("conversation_id", conversationId)
             .toString()
 
     // QRコード文字列や手入力文字列を接続設定へ変換する
