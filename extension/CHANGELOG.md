@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+* Added `antigravityDeck.hooksGitIgnoreTarget` setting (`"gitignore"`, `"gitExclude"`, or `"none"`) to automatically append `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` to Git ignore rules during workspace hooks setup
+* Added Visual Studio Marketplace Trusted Publishing (`--oidc`) support to the release workflow
+* `Antigravity Deck: Setup Workspace Hooks` の実行時に `.agents/hooks.json` と `.agents/scripts/deck-hook.mjs` を `.gitignore` または `.git/info/exclude` へ自動追記できる `antigravityDeck.hooksGitIgnoreTarget` 設定を追加
+* リリースワークフローに Visual Studio Marketplace 向けの Trusted Publishing (`--oidc`) 公開対応を追加
+
 ## 0.2.0
 
 * Added saved conversation session list (`conversations`) and remote conversation switching (`select_conversation`) from the Android companion app
