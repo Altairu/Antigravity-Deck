@@ -14,7 +14,7 @@ It connects a VS Code-compatible extension on your PC to an Android app over Web
 * Notification & Language Settings: Toggle notifications and vibration per event (approval requests, preview details, task completion, errors) and switch app language between System, Japanese, and English
 * Model & Reasoning Effort Control: Switch between `Gemini 4 Hydrogen`, `Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Sonnet 5.5`, `Claude Opus 5.5`, `GPT-OSS 120B`, and `Orchestrator (Argon)`, as well as `low`, `medium`, `high`, and `xhigh` reasoning effort
 * Background Connection: Runs as a foreground service so you still receive status updates and approval prompts with the screen off
-* Built-in Updates: Supports updates via Open VSX Registry / GitHub Releases for the PC extension and in-app updates from GitHub Releases for the Android app
+* Built-in Updates: Supports updates via Visual Studio Marketplace / Open VSX Registry / GitHub Releases for the PC extension and in-app updates from GitHub Releases for the Android app
 
 ## Getting Started
 

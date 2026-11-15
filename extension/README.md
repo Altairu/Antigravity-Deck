@@ -13,7 +13,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 * Chat History, Sessions & Artifacts View: Browse chronological conversation history, switch between saved Antigravity sessions, inspect generated Markdown artifacts (`implementation_plan.md`, `task.md`, `walkthrough.md`), and send prompts via keyboard or voice input on your phone
 * Model & Reasoning Effort Switching: Change the active model and reasoning effort level remotely from your phone
 * Notification & Language Preferences: Toggle notifications and vibration per event, and switch the Android app language between System, Japanese, and English
-* Update Checks: Supports updates via Open VSX Registry as well as GitHub Releases update checks
+* Update Checks: Supports updates via Visual Studio Marketplace and Open VSX Registry, as well as GitHub Releases update checks
 
 ## Quick Start
 

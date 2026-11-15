@@ -14,7 +14,7 @@ PC 側で動く VS Code 互換拡張機能と Android アプリを WebSocket で
 * 通知とアプリ言語の設定: 承認待ち通知、承認通知へのプレビュー表示、会話終了通知、エラー通知、バイブレーションに加えて、アプリ内の表示言語を System / 日本語 / English から切り替えられます
 * モデルと推論レベルの切り替え: `Gemini 4 Hydrogen` / `Gemini 4 Argon` / `Gemini 3.8 Flash` / `Claude Sonnet 5.5` / `Claude Opus 5.5` / `GPT-OSS 120B` / `Orchestrator (Argon)` の選択と、`low` / `medium` / `high` / `xhigh` の切り替えに対応しています
 * バックグラウンド常駐: フォアグラウンドサービスとして接続を維持するため、画面を閉じていても状態通知や承認待ちの受け取りが可能です
-* 自動アップデート: PC 拡張機能は Open VSX Registry および GitHub Releases、Android アプリは GitHub Releases からのアプリ内アップデートに対応しています
+* 自動アップデート: PC 拡張機能は Visual Studio Marketplace / Open VSX Registry / GitHub Releases、Android アプリは GitHub Releases からのアプリ内アップデートに対応しています
 
 ## 導入と使い方
 

@@ -9,7 +9,7 @@ on:
       tag_name:
         description: "リリースタグ名 (例: v0.2.0)"
         required: true
-        default: "v0.1.1"
+        default: "v0.2.0"
 
 permissions:
   contents: write
@@ -64,9 +64,20 @@ jobs:
           if [ -n "$OVSX_PAT" ]; then
             PUBLISHER=$(node -e "console.log(require('./package.json').publisher)")
             npx ovsx create-namespace "$PUBLISHER" -p "$OVSX_PAT" || true
-            npx ovsx publish "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" -p "$OVSX_PAT"
+            npx ovsx publish "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" -p "$OVSX_PAT" --skip-duplicate
           else
             echo "OVSX_PAT secret is not configured; skipping Open VSX publish."
+          fi
+
+      - name: Publish extension to Visual Studio Marketplace
+        working-directory: extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            npx @vscode/vsce publish --packagePath "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" -p "$VSCE_PAT" --skip-duplicate
+          else
+            echo "VSCE_PAT secret is not configured; skipping Visual Studio Marketplace publish."
           fi
 
       - name: Setup Java 17
