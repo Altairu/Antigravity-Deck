@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build-and-release:
@@ -75,9 +76,9 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           if [ -n "$VSCE_PAT" ]; then
-            npx @vscode/vsce publish --packagePath "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" -p "$VSCE_PAT" --skip-duplicate
+            npx --yes @vscode/vsce@latest publish --packagePath "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" -p "$VSCE_PAT" --skip-duplicate
           else
-            echo "VSCE_PAT secret is not configured; skipping Visual Studio Marketplace publish."
+            npx --yes @vscode/vsce@latest publish --packagePath "antigravity-deck-${{ steps.meta.outputs.version }}.vsix" --oidc --skip-duplicate
           fi
 
       - name: Setup Java 17
