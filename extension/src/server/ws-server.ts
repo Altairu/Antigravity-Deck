@@ -26,6 +26,7 @@ export interface WsServerOptions {
   authToken: string;
   sessionStore: SessionStore;
   commandBridge: CommandBridge;
+  isAntigravityTurboEnabled?: () => Promise<boolean>;
   onLog?: (message: string) => void;
   onClientCountChange?: (count: number) => void;
   brainRootDir?: string;
@@ -39,6 +40,7 @@ export class DeckWebSocketServer {
   private authToken: string;
   private readonly sessionStore: SessionStore;
   private readonly commandBridge: CommandBridge;
+  private readonly isAntigravityTurboEnabled: () => Promise<boolean>;
   private readonly onLog: (message: string) => void;
   private readonly onClientCountChange?: (count: number) => void;
   private readonly brainRootDir?: string;
@@ -53,6 +55,7 @@ export class DeckWebSocketServer {
     this.authToken = options.authToken;
     this.sessionStore = options.sessionStore;
     this.commandBridge = options.commandBridge;
+    this.isAntigravityTurboEnabled = options.isAntigravityTurboEnabled || (async () => false);
     this.onLog = options.onLog || (() => {});
     this.onClientCountChange = options.onClientCountChange;
     this.brainRootDir = options.brainRootDir;
@@ -370,8 +373,19 @@ export class DeckWebSocketServer {
         break;
       }
 
+      case "set_auto_approve": {
+        const enabled = parsed.enabled === true;
+        this.sessionStore.setMobileAutoApprove(enabled);
+        this.onLog(`スマートフォン側の自動承認モードを ${enabled ? "有効" : "無効"} に設定しました`);
+        if (enabled && this.sessionStore.hasPendingApproval()) {
+          this.sessionStore.resolveApproval(true);
+          await this.commandBridge.approve(conversationId);
+        }
+        break;
+      }
+
       case "request_sync": {
-        this.sendStateSync(ws);
+        await this.sendStateSync(ws);
         break;
       }
 
@@ -395,6 +409,8 @@ export class DeckWebSocketServer {
       reasoning_effort: session.reasoning_effort,
       model_name: session.model_name,
       available_models: this.sessionStore.getAvailableModels(),
+      auto_approve: session.auto_approve,
+      antigravity_turbo: session.antigravity_turbo,
       updated_at: session.updated_at
     };
   }
@@ -409,7 +425,13 @@ export class DeckWebSocketServer {
     return { history, latestResponse, artifacts, conversations };
   }
 
-  private sendStateSync(ws: WebSocket): void {
+  private async sendStateSync(ws: WebSocket): Promise<void> {
+    try {
+      const turboEnabled = await this.isAntigravityTurboEnabled();
+      this.sessionStore.setAntigravityTurbo(turboEnabled);
+    } catch {
+      // 読み取りに失敗した場合は既存の状態をそのまま配信する
+    }
     const state = this.sessionStore.getState();
     this.sendJson(ws, this.buildStateSyncPayload(state));
     if (state.messages.length === 0 || state.conversations.length === 0) {

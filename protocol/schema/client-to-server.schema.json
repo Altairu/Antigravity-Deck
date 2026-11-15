@@ -23,6 +23,9 @@
       "$ref": "#/$defs/selectConversationCommand"
     },
     {
+      "$ref": "#/$defs/setAutoApproveCommand"
+    },
+    {
       "$ref": "#/$defs/authCommand"
     }
   ],
@@ -201,6 +204,37 @@
       },
       "required": [
         "conversation_id"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "action"
+          ]
+        }
+      ]
+    },
+    "setAutoApproveCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "set_auto_approve"
+        },
+        "action": {
+          "const": "set_auto_approve"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "自動承認モードを有効にするかどうか"
+        }
+      },
+      "required": [
+        "enabled"
       ],
       "anyOf": [
         {

@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
                         onSetAppLanguage = deckViewModel::setAppLanguage,
                         onSetThemeMode = deckViewModel::setThemeMode,
                         onSetBackgroundServiceEnabled = deckViewModel::setBackgroundServiceEnabled,
+                        onSetAutoApproveEnabled = deckViewModel::setAutoApproveEnabled,
                         onCheckForUpdates = { deckViewModel.checkForUpdates(silent = false) },
                         onInstallAvailableUpdate = deckViewModel::installAvailableUpdate,
                         onTriggerSimulation = deckViewModel::triggerSimulation,

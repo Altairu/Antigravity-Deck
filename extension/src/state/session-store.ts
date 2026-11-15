@@ -27,6 +27,8 @@ export interface AgentSession {
   artifacts: ArtifactDocument[];
   reasoning_effort: ReasoningEffort;
   model_name: string;
+  auto_approve: boolean;
+  antigravity_turbo: boolean;
   updated_at: string;
 }
 
@@ -48,6 +50,7 @@ export class SessionStore extends EventEmitter {
   private simulationTimers: NodeJS.Timeout[] = [];
   private simulationGeneration = 0;
   private readonly availableModels: string[] = [...DEFAULT_AVAILABLE_MODELS];
+  private mobileAutoApprove = false;
 
   constructor() {
     super();
@@ -62,6 +65,8 @@ export class SessionStore extends EventEmitter {
       artifacts: [],
       reasoning_effort: "medium",
       model_name: DEFAULT_MODEL,
+      auto_approve: false,
+      antigravity_turbo: false,
       updated_at: new Date().toISOString()
     };
   }
@@ -87,6 +92,27 @@ export class SessionStore extends EventEmitter {
     if (conversationId) {
       this.conversationId = conversationId;
       this.session.conversation_id = conversationId;
+    }
+  }
+
+  public getMobileAutoApprove(): boolean {
+    return this.mobileAutoApprove;
+  }
+
+  public hasPendingApproval(): boolean {
+    return this.pendingApproval !== null;
+  }
+
+  public setMobileAutoApprove(enabled: boolean): void {
+    this.mobileAutoApprove = enabled;
+    if (this.session.auto_approve !== enabled) {
+      this.updateState({ auto_approve: enabled });
+    }
+  }
+
+  public setAntigravityTurbo(enabled: boolean): void {
+    if (this.session.antigravity_turbo !== enabled) {
+      this.updateState({ antigravity_turbo: enabled });
     }
   }
 
@@ -319,6 +345,24 @@ export class SessionStore extends EventEmitter {
         "@@ -42,1 +42,3 @@",
         "+  this.broadcastStateSync();"
       ].join("\n");
+
+      if (this.mobileAutoApprove || this.session.antigravity_turbo) {
+        const tDone = setTimeout(() => {
+          if (this.simulationGeneration !== generation) {
+            return;
+          }
+          const doneText = "結合テストが完了しました。変更箇所のビルドと検証に問題はありません。";
+          const simDoneMessages = this.withAppendedMessage("assistant", doneText);
+          this.updateState({
+            status: "done",
+            approval_preview: null,
+            last_response: doneText,
+            messages: simDoneMessages
+          });
+        }, finishMs);
+        this.simulationTimers.push(tDone);
+        return;
+      }
 
       const approvalPromise = this.requestApproval(
         preview,

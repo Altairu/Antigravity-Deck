@@ -10,6 +10,7 @@ import {
 } from "./config/antigravity-bindings";
 import { DeckHookServer } from "./server/hook-server";
 import { DeckWebSocketServer } from "./server/ws-server";
+import { readAntigravityTurboState } from "./config/antigravity-settings-reader";
 import { HooksGitIgnoreTarget, setupWorkspaceHooks } from "./hooks/workspace-hooks";
 import { SessionStore } from "./state/session-store";
 import { PairingWebviewPanel } from "./ui/pairing-webview";
@@ -261,6 +262,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     authToken: currentConfig.authToken,
     sessionStore,
     commandBridge,
+    isAntigravityTurboEnabled: () => readAntigravityTurboState(),
     onLog: (msg) => output.appendLine(`[WS] ${msg}`),
     onClientCountChange: (count) => updateStatusBar(wsServer.isRunning(), count)
   });
@@ -270,6 +272,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionStore,
     getConnectedClients: () => wsServer.getConnectedClientCount(),
     shouldWaitForMobileApproval: () => readExtensionConfig().waitForMobileApproval,
+    isAntigravityTurboEnabled: () => readAntigravityTurboState(),
     onLog: (msg) => output.appendLine(`[Hook] ${msg}`)
   });
 

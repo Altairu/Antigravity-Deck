@@ -85,6 +85,8 @@ sequenceDiagram
 * `reasoning_effort`: `low` / `medium` / `high` / `xhigh` のいずれか
 * `model_name`: セッションで現在利用中のAIモデル識別子文字列
 * `available_models`: 選択可能なAIモデル一覧配列
+* `auto_approve`: スマートフォン側の自動承認モードが有効かどうかを示す真偽値
+* `antigravity_turbo`: Antigravity IDE側のターボモード設定を自動検出しているかどうかを示す真偽値
 
 ### AndroidからPCへの操作コマンド
 
@@ -96,3 +98,4 @@ sequenceDiagram
 * `set_reasoning_effort`: `reasoning_effort` を変更する
 * `set_model`: `model_name` を指定したAIモデルへ切り替える
 * `select_conversation`: `conversation_id` で指定した過去の会話セッションへ切り替える
+* `set_auto_approve`: `enabled` でスマートフォン側の自動承認モードを切り替える

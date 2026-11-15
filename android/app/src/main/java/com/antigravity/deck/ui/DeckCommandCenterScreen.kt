@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -121,6 +122,7 @@ fun DeckCommandCenterScreen(
     onSetAppLanguage: (AppLanguage) -> Unit,
     onSetThemeMode: (AppThemeMode) -> Unit,
     onSetBackgroundServiceEnabled: (Boolean) -> Unit,
+    onSetAutoApproveEnabled: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onInstallAvailableUpdate: () -> Unit,
     onTriggerSimulation: () -> Unit,
@@ -218,8 +220,10 @@ fun DeckCommandCenterScreen(
             AgentStatusCard(
                 session = uiState.session,
                 availableModels = uiState.availableModels,
+                autoApproveEnabled = uiState.autoApproveEnabled,
                 onSetModel = onSetModel,
                 onSetReasoningEffort = onSetReasoningEffort,
+                onSetAutoApproveEnabled = onSetAutoApproveEnabled,
                 onOpenConversationPicker = { showConversationPicker = true }
             )
 
@@ -232,7 +236,11 @@ fun DeckCommandCenterScreen(
                     .fillMaxWidth()
             )
 
-            if (uiState.session.status == AgentStatus.WAITING_APPROVAL) {
+            if (
+                uiState.session.status == AgentStatus.WAITING_APPROVAL &&
+                !uiState.autoApproveEnabled &&
+                !uiState.session.antigravityTurbo
+            ) {
                 ApprovalActionRow(
                     onApprove = onApprove,
                     onReject = onReject
@@ -275,11 +283,13 @@ fun DeckCommandCenterScreen(
             appLanguage = uiState.appLanguage,
             themeMode = uiState.themeMode,
             backgroundEnabled = uiState.backgroundEnabled,
+            autoApproveEnabled = uiState.autoApproveEnabled,
             updateState = uiState.updateState,
             onUpdate = onUpdateNotificationPrefs,
             onSetAppLanguage = onSetAppLanguage,
             onSetThemeMode = onSetThemeMode,
             onSetBackgroundServiceEnabled = onSetBackgroundServiceEnabled,
+            onSetAutoApproveEnabled = onSetAutoApproveEnabled,
             onCheckForUpdates = onCheckForUpdates,
             onInstallAvailableUpdate = onInstallAvailableUpdate,
             onTriggerSimulation = onTriggerSimulation,
@@ -399,8 +409,10 @@ private fun TopHeaderBar(
 private fun AgentStatusCard(
     session: AgentSession,
     availableModels: List<String>,
+    autoApproveEnabled: Boolean,
     onSetModel: (String) -> Unit,
     onSetReasoningEffort: (ReasoningEffort) -> Unit,
+    onSetAutoApproveEnabled: (Boolean) -> Unit,
     onOpenConversationPicker: () -> Unit
 ) {
     val s = LocalDeckStrings.current
@@ -459,6 +471,66 @@ private fun AgentStatusCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                if (session.antigravityTurbo) {
+                    Surface(
+                        color = DeckColors.StatusDone.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Bolt,
+                                contentDescription = s.turboModeBadge,
+                                tint = DeckColors.StatusDone,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = s.turboModeBadge,
+                                color = DeckColors.StatusDone,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onSetAutoApproveEnabled(!autoApproveEnabled) },
+                    color = if (autoApproveEnabled) {
+                        DeckColors.AccentBlue.copy(alpha = 0.18f)
+                    } else {
+                        DeckColors.SurfaceElevated
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    border = if (autoApproveEnabled) {
+                        BorderStroke(1.dp, DeckColors.AccentBlue.copy(alpha = 0.5f))
+                    } else {
+                        null
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Bolt,
+                            contentDescription = s.autoApproveChipLabel,
+                            tint = if (autoApproveEnabled) DeckColors.AccentBlue else DeckColors.TextSecondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = s.autoApproveChipLabel,
+                            color = if (autoApproveEnabled) DeckColors.AccentBlue else DeckColors.TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -1177,11 +1249,13 @@ private fun SettingsDialog(
     appLanguage: AppLanguage,
     themeMode: AppThemeMode,
     backgroundEnabled: Boolean,
+    autoApproveEnabled: Boolean,
     updateState: UpdateUiState,
     onUpdate: (NotificationPreferences) -> Unit,
     onSetAppLanguage: (AppLanguage) -> Unit,
     onSetThemeMode: (AppThemeMode) -> Unit,
     onSetBackgroundServiceEnabled: (Boolean) -> Unit,
+    onSetAutoApproveEnabled: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onInstallAvailableUpdate: () -> Unit,
     onTriggerSimulation: () -> Unit,
@@ -1207,6 +1281,12 @@ private fun SettingsDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                SettingSwitchRow(
+                    title = s.settingAutoApproveTitle,
+                    description = s.settingAutoApproveDesc,
+                    checked = autoApproveEnabled,
+                    onCheckedChange = onSetAutoApproveEnabled
+                )
                 SettingSwitchRow(
                     title = s.settingBackgroundTitle,
                     description = s.settingBackgroundDesc,

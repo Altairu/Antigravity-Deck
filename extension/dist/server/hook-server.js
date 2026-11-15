@@ -14,6 +14,7 @@ class DeckHookServer {
     sessionStore;
     getConnectedClients;
     shouldWaitForMobileApproval;
+    isAntigravityTurboEnabled;
     onLog;
     brainRootDir;
     responseRefreshTimers = new Set();
@@ -22,6 +23,7 @@ class DeckHookServer {
         this.sessionStore = options.sessionStore;
         this.getConnectedClients = options.getConnectedClients;
         this.shouldWaitForMobileApproval = options.shouldWaitForMobileApproval;
+        this.isAntigravityTurboEnabled = options.isAntigravityTurboEnabled || (async () => false);
         this.onLog = options.onLog || (() => { });
         this.brainRootDir = options.brainRootDir;
     }
@@ -102,15 +104,21 @@ class DeckHookServer {
             this.sessionStore.setConversationId(payload.conversationId);
             const transition = (0, antigravity_bindings_1.resolveHookTransition)(payload);
             const eventName = payload.hookEventName || "";
-            const [history, artifacts, conversations] = await Promise.all([
+            const [history, artifacts, conversations, antigravityTurbo] = await Promise.all([
                 this.loadHistoryWithLastUserInput(payload.conversationId, payload.lastUserInput),
                 (0, transcript_reader_1.readConversationArtifacts)(payload.conversationId, this.brainRootDir),
-                (0, transcript_reader_1.listConversations)(this.brainRootDir)
+                (0, transcript_reader_1.listConversations)(this.brainRootDir),
+                eventName === "PreToolUse"
+                    ? this.isAntigravityTurboEnabled().catch(() => false)
+                    : Promise.resolve(this.sessionStore.getState().antigravity_turbo)
             ]);
-            // PreToolUseかつモバイル承認待ちが有効で、Androidクライアント接続中なら応答を待つ
+            this.sessionStore.setAntigravityTurbo(antigravityTurbo);
+            const autoApproveActive = this.sessionStore.getMobileAutoApprove() || antigravityTurbo;
+            // PreToolUseかつモバイル承認待ちが有効で、自動承認・ターボモードでなければ応答を待つ
             const canWaitForMobile = !payload.nonBlocking &&
                 eventName === "PreToolUse" &&
                 transition.requiresApproval &&
+                !autoApproveActive &&
                 this.shouldWaitForMobileApproval() &&
                 this.getConnectedClients() > 0;
             if (canWaitForMobile) {
@@ -132,6 +140,10 @@ class DeckHookServer {
                 lastResponse = await (0, transcript_reader_1.readLatestAgentResponse)(payload.conversationId, this.brainRootDir);
                 this.scheduleDelayedResponseRefresh(payload.conversationId, transition.status);
             }
+            const effectiveStatus = autoApproveActive && transition.status === "waiting_approval" ? "thinking" : transition.status;
+            const effectiveApprovalPreview = autoApproveActive && transition.status === "waiting_approval"
+                ? null
+                : transition.approvalPreview;
             this.sessionStore.updateState({
                 ...(transition.title ? { title: transition.title } : {}),
                 ...(transition.modelName ? { model_name: transition.modelName } : {}),
@@ -141,10 +153,15 @@ class DeckHookServer {
                 ...(payload.conversationId ? { conversation_id: payload.conversationId } : {}),
                 artifacts,
                 ...(conversations.length > 0 ? { conversations } : {}),
-                status: transition.status,
-                approval_preview: transition.approvalPreview
+                status: effectiveStatus,
+                approval_preview: effectiveApprovalPreview
             });
             if (eventName === "PreToolUse") {
+                if (autoApproveActive) {
+                    this.onLog(antigravityTurbo
+                        ? "Antigravityターボモード検出のため PreToolUse を即座に許可しました"
+                        : "スマートフォン自動承認モードのため PreToolUse を即座に許可しました");
+                }
                 this.writeJson(res, 200, { decision: "allow" });
                 return;
             }

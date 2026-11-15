@@ -40,6 +40,7 @@ data class DeckSessionSnapshot(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val backgroundEnabled: Boolean = true,
+    val autoApproveEnabled: Boolean = false,
     val feedbackBanner: String? = null
 )
 
@@ -58,13 +59,15 @@ class DeckSessionController private constructor(
     private val initialAppLanguage = loadAppLanguage()
     private val initialThemeMode = loadThemeMode()
     private val initialBackgroundEnabled = prefs.getBoolean(KEY_BACKGROUND_ENABLED, true)
+    private val initialAutoApproveEnabled = prefs.getBoolean(KEY_AUTO_APPROVE, false)
     private val _state = MutableStateFlow(
         DeckSessionSnapshot(
             endpointConfig = initialEndpoint,
             notificationPrefs = initialNotificationPrefs,
             appLanguage = initialAppLanguage,
             themeMode = initialThemeMode,
-            backgroundEnabled = initialBackgroundEnabled
+            backgroundEnabled = initialBackgroundEnabled,
+            autoApproveEnabled = initialAutoApproveEnabled
         )
     )
     val state: StateFlow<DeckSessionSnapshot> = _state.asStateFlow()
@@ -77,6 +80,9 @@ class DeckSessionController private constructor(
         scope.launch {
             wsClient.connectionStatus.collect { status ->
                 _state.update { it.copy(connectionStatus = status) }
+                if (status is ConnectionStatus.Connected) {
+                    wsClient.send(ProtocolCodec.commandSetAutoApprove(_state.value.autoApproveEnabled))
+                }
             }
         }
 
@@ -177,6 +183,35 @@ class DeckSessionController private constructor(
         }
     }
 
+    fun setAutoApproveEnabled(enabled: Boolean) {
+        haptics.triggerSelectionClick()
+        prefs.edit().putBoolean(KEY_AUTO_APPROVE, enabled).apply()
+        val s = strings()
+        if (enabled) {
+            notifications.cancel()
+            if (_state.value.session.status == AgentStatus.WAITING_APPROVAL) {
+                wsClient.send(ProtocolCodec.commandApprove())
+            }
+        }
+        wsClient.send(ProtocolCodec.commandSetAutoApprove(enabled))
+        _state.update { snapshot ->
+            val updatedSession = if (enabled && snapshot.session.status == AgentStatus.WAITING_APPROVAL) {
+                snapshot.session.copy(
+                    status = AgentStatus.THINKING,
+                    approvalPreview = null,
+                    autoApprove = true
+                )
+            } else {
+                snapshot.session.copy(autoApprove = enabled)
+            }
+            snapshot.copy(
+                session = updatedSession,
+                autoApproveEnabled = enabled,
+                feedbackBanner = if (enabled) s.bannerAutoApproveEnabled else s.bannerAutoApproveDisabled
+            )
+        }
+    }
+
     fun setAppLanguage(language: AppLanguage) {
         haptics.triggerSelectionClick()
         prefs.edit().putString(KEY_APP_LANGUAGE, language.wireValue).apply()
@@ -259,26 +294,41 @@ class DeckSessionController private constructor(
             is ServerEvent.StateSync -> {
                 val prevStatus = _state.value.session.status
                 val updated = event.session
-
-                if (hasReceivedSync && prevStatus != updated.status) {
-                    val currentPrefs = _state.value.notificationPrefs
-                    if (currentPrefs.shouldVibrate(updated.status)) {
-                        triggerStatusHaptics(updated.status)
+                val autoBypass = _state.value.autoApproveEnabled || updated.antigravityTurbo
+                val effectiveSession = if (autoBypass && updated.status == AgentStatus.WAITING_APPROVAL) {
+                    notifications.cancel()
+                    if (_state.value.autoApproveEnabled) {
+                        wsClient.send(ProtocolCodec.commandApprove())
                     }
-                    notifications.notifySessionTransition(updated, currentPrefs, strings())
+                    updated.copy(
+                        status = AgentStatus.THINKING,
+                        approvalPreview = null
+                    )
+                } else {
+                    updated
+                }
+
+                if (hasReceivedSync && prevStatus != effectiveSession.status) {
+                    val currentPrefs = _state.value.notificationPrefs
+                    if (currentPrefs.shouldVibrate(effectiveSession.status)) {
+                        triggerStatusHaptics(effectiveSession.status)
+                    }
+                    notifications.notifySessionTransition(effectiveSession, currentPrefs, strings())
                 }
                 hasReceivedSync = true
 
                 _state.update {
                     it.copy(
-                        session = updated,
+                        session = effectiveSession,
                         availableModels = event.availableModels ?: it.availableModels
                     )
                 }
             }
 
             is ServerEvent.AuthAck -> {
-                if (!event.authenticated) {
+                if (event.authenticated) {
+                    wsClient.send(ProtocolCodec.commandSetAutoApprove(_state.value.autoApproveEnabled))
+                } else {
                     _state.update {
                         it.copy(feedbackBanner = event.message ?: strings().bannerAuthMismatch)
                     }
@@ -448,6 +498,7 @@ class DeckSessionController private constructor(
         private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_BACKGROUND_ENABLED = "background_enabled"
+        private const val KEY_AUTO_APPROVE = "auto_approve_enabled"
 
         @Volatile
         private var instance: DeckSessionController? = null

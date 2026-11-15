@@ -45,6 +45,7 @@ data class DeckUiState(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val backgroundEnabled: Boolean = true,
+    val autoApproveEnabled: Boolean = false,
     val speechState: SpeechUiState = SpeechUiState(),
     val feedbackBanner: String? = null,
     val showPairingSheet: Boolean = false,
@@ -86,6 +87,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             appLanguage = snapshot.appLanguage,
             themeMode = snapshot.themeMode,
             backgroundEnabled = snapshot.backgroundEnabled,
+            autoApproveEnabled = snapshot.autoApproveEnabled,
             speechState = speech,
             feedbackBanner = snapshot.feedbackBanner,
             showPairingSheet = pairingVisible,
@@ -104,6 +106,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
             appLanguage = controller.state.value.appLanguage,
             themeMode = controller.state.value.themeMode,
             backgroundEnabled = controller.state.value.backgroundEnabled,
+            autoApproveEnabled = controller.state.value.autoApproveEnabled,
             feedbackBanner = controller.state.value.feedbackBanner
         )
     )
@@ -163,6 +166,10 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setBackgroundServiceEnabled(enabled: Boolean) {
         controller.setBackgroundServiceEnabled(enabled)
+    }
+
+    fun setAutoApproveEnabled(enabled: Boolean) {
+        controller.setAutoApproveEnabled(enabled)
     }
 
     fun isBackgroundServiceEnabled(): Boolean = controller.isBackgroundServiceEnabled()

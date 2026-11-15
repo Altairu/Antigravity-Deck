@@ -11,6 +11,7 @@ It connects a VS Code-compatible extension on your PC to an Android app over Web
 * Real-time Agent Sync: Mirrors `idle`, `thinking`, `waiting_approval`, `done`, and `error` states to your phone with status colors and haptic feedback
 * Conversation History, Session Switcher & Artifacts Viewer: Switch between past Antigravity conversation sessions from your phone, browse chronological chat history, read generated Markdown artifacts (`implementation_plan.md`, `task.md`, `walkthrough.md`), and send prompts via text or Push-to-Talk voice input
 * Approval Previews & Notification Actions: Inspect pending commands or file changes captured via `PreToolUse` hooks and respond directly from the app or Approve/Reject notification buttons
+* Auto-Approve & Antigravity Turbo Detection: Toggle mobile auto-approve mode to bypass approval prompts and notifications, or let the extension automatically detect Antigravity IDE Turbo mode (`Eager`) and allow tool calls without prompting
 * Notification & Language Settings: Toggle notifications and vibration per event (approval requests, preview details, task completion, errors) and switch app language between System, Japanese, and English
 * Model & Reasoning Effort Control: Switch between `Gemini 4 Hydrogen`, `Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Sonnet 5.5`, `Claude Opus 5.5`, `GPT-OSS 120B`, and `Orchestrator (Argon)`, as well as `low`, `medium`, `high`, and `xhigh` reasoning effort
 * Background Connection: Runs as a foreground service so you still receive status updates and approval prompts with the screen off

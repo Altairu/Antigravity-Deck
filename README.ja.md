@@ -11,6 +11,7 @@ PC 側で動く VS Code 互換拡張機能と Android アプリを WebSocket で
 * エージェントの状態同期: `idle` / `thinking` / `waiting_approval` / `done` / `error` の各状態をリアルタイムでスマホ画面へ反映し、ステータスに応じた配色と振動で通知します
 * 会話履歴とセッション切り替えおよびアーティファクト閲覧: 過去の会話セッション一覧から任意のスレッドへ切り替えられ、会話履歴の振り返りや `implementation_plan.md` / `task.md` / `walkthrough.md` などの成果物タブ表示、承認待ち時のコンテキスト切り替え、テキストや Push-to-Talk 音声入力からの指示出しを行えます
 * 承認プレビューと通知バー操作: `PreToolUse` フックで捕捉した実行予定コマンドやファイル変更の要約を確認し、アプリ画面だけでなく通知バー上の Approve と Reject ボタンから直接応答できます
+* 自動承認モードと Antigravity Turbo 連動: スマホ側の自動承認モードをオンにすると承認画面や通知を出さずに自動許可でき、PC 側の Antigravity IDE が Turbo モードになっている場合も自動で読み取って承認待ちをスキップします
 * 通知とアプリ言語の設定: 承認待ち通知、承認通知へのプレビュー表示、会話終了通知、エラー通知、バイブレーションに加えて、アプリ内の表示言語を System / 日本語 / English から切り替えられます
 * モデルと推論レベルの切り替え: `Gemini 4 Hydrogen` / `Gemini 4 Argon` / `Gemini 3.8 Flash` / `Claude Sonnet 5.5` / `Claude Opus 5.5` / `GPT-OSS 120B` / `Orchestrator (Argon)` の選択と、`low` / `medium` / `high` / `xhigh` の切り替えに対応しています
 * バックグラウンド常駐: フォアグラウンドサービスとして接続を維持するため、画面を閉じていても状態通知や承認待ちの受け取りが可能です

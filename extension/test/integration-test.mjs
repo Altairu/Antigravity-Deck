@@ -16,6 +16,10 @@ import {
   readConversationHistory
 } from "../dist/state/transcript-reader.js";
 import { compareSemver, parseLatestVsixRelease } from "../dist/updater/github-release.js";
+import {
+  CASCADE_AUTO_EXECUTION_EAGER,
+  parseTerminalAutoExecutionPolicy
+} from "../dist/config/antigravity-settings-reader.js";
 
 async function run() {
   const store = new SessionStore();
@@ -42,11 +46,13 @@ async function run() {
   const tempFreshWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-fresh-"));
   const tempMergeWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-merge-"));
 
+  let mockTurboEnabled = false;
   const wsServer = new DeckWebSocketServer({
     port: 18765,
     authToken: "test-token",
     sessionStore: store,
     commandBridge: bridge,
+    isAntigravityTurboEnabled: async () => mockTurboEnabled,
     brainRootDir: tempBrainRoot
   });
 
@@ -55,6 +61,7 @@ async function run() {
     sessionStore: store,
     getConnectedClients: () => wsServer.getConnectedClientCount(),
     shouldWaitForMobileApproval: () => true,
+    isAntigravityTurboEnabled: async () => mockTurboEnabled,
     brainRootDir: tempBrainRoot
   });
 
@@ -412,6 +419,80 @@ async function run() {
     }
 
     ws.close();
+
+    // 9. AntigravityターボモードのProtobufデコードと自動承認モードが正しく動作すること
+    // ("terminalAutoExecutionPolicySentinelKey" => "EAM=" (3 = EAGER))
+    const sampleEntry = Buffer.concat([
+      Buffer.from([0x0a]),
+      Buffer.from([
+        "terminalAutoExecutionPolicySentinelKey".length,
+        ...Buffer.from("terminalAutoExecutionPolicySentinelKey", "utf8")
+      ]),
+      Buffer.from([0x12, 0x06, 0x0a, 0x04, ...Buffer.from("EAM=", "utf8")])
+    ]);
+    const sampleRoot = Buffer.concat([
+      Buffer.from([0x0a, sampleEntry.length]),
+      sampleEntry
+    ]);
+    assert.equal(
+      parseTerminalAutoExecutionPolicy(sampleRoot.toString("base64")),
+      CASCADE_AUTO_EXECUTION_EAGER
+    );
+
+    const autoWsMessages = [];
+    const autoWs = new WebSocket("ws://127.0.0.1:18765?token=test-token");
+    autoWs.on("message", (buf) => autoWsMessages.push(JSON.parse(buf.toString())));
+    await new Promise((resolve) => autoWs.on("open", resolve));
+    await new Promise((r) => setTimeout(r, 80));
+
+    autoWs.send(JSON.stringify({ type: "set_auto_approve", enabled: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    const autoSync = [...autoWsMessages].reverse().find((m) => m.type === "state_sync");
+    assert.equal(autoSync?.auto_approve, true);
+
+    const postPreToolUse = () =>
+      new Promise((resolve, reject) => {
+        const body = JSON.stringify({
+          hookEventName: "PreToolUse",
+          conversationId: "conv-1",
+          toolCall: { name: "run_command", args: { CommandLine: "echo hi" } }
+        });
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: 18766,
+            path: "/hook",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(body)
+            }
+          },
+          (res) => {
+            const chunks = [];
+            res.on("data", (chunk) => chunks.push(chunk));
+            res.on("end", () => resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))));
+          }
+        );
+        req.on("error", reject);
+        req.write(body);
+        req.end();
+      });
+
+    const autoDecision = await postPreToolUse();
+    assert.equal(autoDecision.decision, "allow");
+    assert.notEqual(store.getState().status, "waiting_approval");
+
+    // モバイル側OFFでもAntigravityターボモードがONなら即座にallowになること
+    autoWs.send(JSON.stringify({ type: "set_auto_approve", enabled: false }));
+    await new Promise((r) => setTimeout(r, 80));
+    mockTurboEnabled = true;
+    const turboDecision = await postPreToolUse();
+    assert.equal(turboDecision.decision, "allow");
+    assert.equal(store.getState().antigravity_turbo, true);
+    assert.notEqual(store.getState().status, "waiting_approval");
+
+    autoWs.close();
     console.log("EXTENSION_INTEGRATION_TEST_OK");
   } finally {
     store.dispose();

@@ -13,6 +13,7 @@ class DeckWebSocketServer {
     authToken;
     sessionStore;
     commandBridge;
+    isAntigravityTurboEnabled;
     onLog;
     onClientCountChange;
     brainRootDir;
@@ -25,6 +26,7 @@ class DeckWebSocketServer {
         this.authToken = options.authToken;
         this.sessionStore = options.sessionStore;
         this.commandBridge = options.commandBridge;
+        this.isAntigravityTurboEnabled = options.isAntigravityTurboEnabled || (async () => false);
         this.onLog = options.onLog || (() => { });
         this.onClientCountChange = options.onClientCountChange;
         this.brainRootDir = options.brainRootDir;
@@ -298,8 +300,18 @@ class DeckWebSocketServer {
                 this.onLog(`会話セッションを切り替えました: ${targetId}`);
                 break;
             }
+            case "set_auto_approve": {
+                const enabled = parsed.enabled === true;
+                this.sessionStore.setMobileAutoApprove(enabled);
+                this.onLog(`スマートフォン側の自動承認モードを ${enabled ? "有効" : "無効"} に設定しました`);
+                if (enabled && this.sessionStore.hasPendingApproval()) {
+                    this.sessionStore.resolveApproval(true);
+                    await this.commandBridge.approve(conversationId);
+                }
+                break;
+            }
             case "request_sync": {
-                this.sendStateSync(ws);
+                await this.sendStateSync(ws);
                 break;
             }
             default:
@@ -321,6 +333,8 @@ class DeckWebSocketServer {
             reasoning_effort: session.reasoning_effort,
             model_name: session.model_name,
             available_models: this.sessionStore.getAvailableModels(),
+            auto_approve: session.auto_approve,
+            antigravity_turbo: session.antigravity_turbo,
             updated_at: session.updated_at
         };
     }
@@ -333,7 +347,14 @@ class DeckWebSocketServer {
         ]);
         return { history, latestResponse, artifacts, conversations };
     }
-    sendStateSync(ws) {
+    async sendStateSync(ws) {
+        try {
+            const turboEnabled = await this.isAntigravityTurboEnabled();
+            this.sessionStore.setAntigravityTurbo(turboEnabled);
+        }
+        catch {
+            // 読み取りに失敗した場合は既存の状態をそのまま配信する
+        }
         const state = this.sessionStore.getState();
         this.sendJson(ws, this.buildStateSyncPayload(state));
         if (state.messages.length === 0 || state.conversations.length === 0) {

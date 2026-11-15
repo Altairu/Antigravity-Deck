@@ -116,6 +116,14 @@
           },
           "description": "クライアント側で選択可能なAIモデル一覧"
         },
+        "auto_approve": {
+          "type": "boolean",
+          "description": "スマートフォン側の自動承認モードが有効かどうか"
+        },
+        "antigravity_turbo": {
+          "type": "boolean",
+          "description": "Antigravity IDE側のターボモード設定を自動検出しているかどうか"
+        },
         "updated_at": {
           "type": "string",
           "format": "date-time",

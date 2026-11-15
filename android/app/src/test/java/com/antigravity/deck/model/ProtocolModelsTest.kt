@@ -90,6 +90,10 @@ class ProtocolModelsTest {
         val approveObj = JSONObject(ProtocolCodec.commandApprove())
         assertEquals("approve", approveObj.getString("type"))
         assertFalse(approveObj.has("session_id"))
+
+        val autoApproveObj = JSONObject(ProtocolCodec.commandSetAutoApprove(true))
+        assertEquals("set_auto_approve", autoApproveObj.getString("type"))
+        assertEquals(true, autoApproveObj.getBoolean("enabled"))
     }
 
     @Test
@@ -143,12 +147,16 @@ class ProtocolModelsTest {
                 { "role": "assistant", "content": "   " }
               ],
               "reasoning_effort": "medium",
-              "model_name": "Gemini 4 Hydrogen"
+              "model_name": "Gemini 4 Hydrogen",
+              "auto_approve": true,
+              "antigravity_turbo": true
             }
         """.trimIndent()
 
         val event = ProtocolCodec.decodeServerEvent(raw) as? ServerEvent.StateSync
         assertNotNull(event)
+        assertEquals(true, event!!.session.autoApprove)
+        assertEquals(true, event.session.antigravityTurbo)
         val messages = event!!.session.messages
         assertEquals(2, messages.size)
         assertEquals(MessageRole.USER, messages[0].role)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+* Add mobile auto-approve mode synchronized from the Android app (`set_auto_approve` / `auto_approve`) to automatically approve `PreToolUse` hooks without showing approval UI or notifications
+* Automatically detect Antigravity IDE Turbo mode (`CascadeCommandsAutoExecution.EAGER` in `state.vscdb`) and bypass approval prompts (`antigravity_turbo`)
+* Surface Turbo badge and one-tap auto-approve toggle on the Android app
+
 ## 0.2.1
 
 * Added `antigravityDeck.hooksGitIgnoreTarget` setting (`"gitignore"`, `"gitExclude"`, or `"none"`) to automatically append `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` to Git ignore rules during workspace hooks setup

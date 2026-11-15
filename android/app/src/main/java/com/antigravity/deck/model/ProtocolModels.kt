@@ -84,7 +84,9 @@ data class AgentSession(
     val messages: List<ConversationMessage> = emptyList(),
     val conversationId: String? = null,
     val conversations: List<ConversationSummary> = emptyList(),
-    val artifacts: List<ArtifactDocument> = emptyList()
+    val artifacts: List<ArtifactDocument> = emptyList(),
+    val autoApprove: Boolean = false,
+    val antigravityTurbo: Boolean = false
 ) {
     companion object {
         const val DEFAULT_MODEL = "Gemini 4 Hydrogen"
@@ -278,6 +280,8 @@ object ProtocolCodec {
         }
         val conversations = parseConversations(obj.optJSONArray("conversations"))
         val artifacts = parseArtifacts(obj.optJSONArray("artifacts"))
+        val autoApprove = obj.optBoolean("auto_approve", false)
+        val antigravityTurbo = obj.optBoolean("antigravity_turbo", false)
         return AgentSession(
             title = title,
             status = status,
@@ -289,7 +293,9 @@ object ProtocolCodec {
             messages = messages,
             conversationId = conversationId,
             conversations = conversations,
-            artifacts = artifacts
+            artifacts = artifacts,
+            autoApprove = autoApprove,
+            antigravityTurbo = antigravityTurbo
         )
     }
 
@@ -419,6 +425,12 @@ object ProtocolCodec {
         JSONObject()
             .put("type", "select_conversation")
             .put("conversation_id", conversationId)
+            .toString()
+
+    fun commandSetAutoApprove(enabled: Boolean): String =
+        JSONObject()
+            .put("type", "set_auto_approve")
+            .put("enabled", enabled)
             .toString()
 
     // QRコード文字列や手入力文字列を接続設定へ変換する

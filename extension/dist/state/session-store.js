@@ -11,6 +11,7 @@ class SessionStore extends node_events_1.EventEmitter {
     simulationTimers = [];
     simulationGeneration = 0;
     availableModels = [...antigravity_bindings_1.DEFAULT_AVAILABLE_MODELS];
+    mobileAutoApprove = false;
     constructor() {
         super();
         this.session = {
@@ -24,6 +25,8 @@ class SessionStore extends node_events_1.EventEmitter {
             artifacts: [],
             reasoning_effort: "medium",
             model_name: antigravity_bindings_1.DEFAULT_MODEL,
+            auto_approve: false,
+            antigravity_turbo: false,
             updated_at: new Date().toISOString()
         };
     }
@@ -45,6 +48,23 @@ class SessionStore extends node_events_1.EventEmitter {
         if (conversationId) {
             this.conversationId = conversationId;
             this.session.conversation_id = conversationId;
+        }
+    }
+    getMobileAutoApprove() {
+        return this.mobileAutoApprove;
+    }
+    hasPendingApproval() {
+        return this.pendingApproval !== null;
+    }
+    setMobileAutoApprove(enabled) {
+        this.mobileAutoApprove = enabled;
+        if (this.session.auto_approve !== enabled) {
+            this.updateState({ auto_approve: enabled });
+        }
+    }
+    setAntigravityTurbo(enabled) {
+        if (this.session.antigravity_turbo !== enabled) {
+            this.updateState({ antigravity_turbo: enabled });
         }
     }
     // 単一セッションの状態を更新し変更イベントを発行する
@@ -239,6 +259,23 @@ class SessionStore extends node_events_1.EventEmitter {
                 "@@ -42,1 +42,3 @@",
                 "+  this.broadcastStateSync();"
             ].join("\n");
+            if (this.mobileAutoApprove || this.session.antigravity_turbo) {
+                const tDone = setTimeout(() => {
+                    if (this.simulationGeneration !== generation) {
+                        return;
+                    }
+                    const doneText = "結合テストが完了しました。変更箇所のビルドと検証に問題はありません。";
+                    const simDoneMessages = this.withAppendedMessage("assistant", doneText);
+                    this.updateState({
+                        status: "done",
+                        approval_preview: null,
+                        last_response: doneText,
+                        messages: simDoneMessages
+                    });
+                }, finishMs);
+                this.simulationTimers.push(tDone);
+                return;
+            }
             const approvalPromise = this.requestApproval(preview, "Antigravity Deck 結合テスト", autoApproveDelayMs, true);
             approvalPromise.then((res) => {
                 if (this.simulationGeneration !== generation) {

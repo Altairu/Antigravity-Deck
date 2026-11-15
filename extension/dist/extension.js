@@ -40,6 +40,7 @@ const vscode = __importStar(require("vscode"));
 const antigravity_bindings_1 = require("./config/antigravity-bindings");
 const hook_server_1 = require("./server/hook-server");
 const ws_server_1 = require("./server/ws-server");
+const antigravity_settings_reader_1 = require("./config/antigravity-settings-reader");
 const workspace_hooks_1 = require("./hooks/workspace-hooks");
 const session_store_1 = require("./state/session-store");
 const pairing_webview_1 = require("./ui/pairing-webview");
@@ -217,6 +218,7 @@ async function activate(context) {
         authToken: currentConfig.authToken,
         sessionStore,
         commandBridge,
+        isAntigravityTurboEnabled: () => (0, antigravity_settings_reader_1.readAntigravityTurboState)(),
         onLog: (msg) => output.appendLine(`[WS] ${msg}`),
         onClientCountChange: (count) => updateStatusBar(wsServer.isRunning(), count)
     });
@@ -225,6 +227,7 @@ async function activate(context) {
         sessionStore,
         getConnectedClients: () => wsServer.getConnectedClientCount(),
         shouldWaitForMobileApproval: () => readExtensionConfig().waitForMobileApproval,
+        isAntigravityTurboEnabled: () => (0, antigravity_settings_reader_1.readAntigravityTurboState)(),
         onLog: (msg) => output.appendLine(`[Hook] ${msg}`)
     });
     const startServers = async () => {
