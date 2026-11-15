@@ -95,6 +95,21 @@
           "type": "boolean",
           "default": false,
           "description": "ワークスペースを開いた際に .agents/hooks.json と deck-hook.mjs を自動配置するかどうか"
+        },
+        "antigravityDeck.hooksGitIgnoreTarget": {
+          "type": "string",
+          "enum": [
+            "gitignore",
+            "gitExclude",
+            "none"
+          ],
+          "enumDescriptions": [
+            "ワークスペースの .gitignore に .agents/hooks.json と .agents/scripts/deck-hook.mjs を自動追記します",
+            "リポジトリ固有の .git/info/exclude に追記し、.gitignore に差分を残さず除外します",
+            "Git の除外設定へ自動追記しません"
+          ],
+          "default": "gitignore",
+          "description": "Workspace Hooks 配置時に .agents/hooks.json と .agents/scripts/deck-hook.mjs を自動で Git 除外設定へ追記するかどうか"
         }
       }
     }

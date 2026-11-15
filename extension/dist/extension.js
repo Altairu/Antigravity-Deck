@@ -179,6 +179,10 @@ function createVsCodeCommandBridge(output, sessionStore) {
 }
 function readExtensionConfig() {
     const cfg = vscode.workspace.getConfiguration("antigravityDeck");
+    const rawGitIgnoreTarget = cfg.get("hooksGitIgnoreTarget", "gitignore");
+    const hooksGitIgnoreTarget = rawGitIgnoreTarget === "gitExclude" || rawGitIgnoreTarget === "none"
+        ? rawGitIgnoreTarget
+        : "gitignore";
     return {
         wsPort: cfg.get("wsPort", 8765),
         hookPort: cfg.get("hookPort", 8766),
@@ -186,7 +190,8 @@ function readExtensionConfig() {
         waitForMobileApproval: cfg.get("waitForMobileApproval", true),
         autoStart: cfg.get("autoStart", true),
         autoCheckUpdates: cfg.get("autoCheckUpdates", true),
-        autoSetupWorkspaceHooks: cfg.get("autoSetupWorkspaceHooks", false)
+        autoSetupWorkspaceHooks: cfg.get("autoSetupWorkspaceHooks", false),
+        hooksGitIgnoreTarget
     };
 }
 async function activate(context) {
@@ -261,10 +266,14 @@ async function activate(context) {
         for (const folder of folders) {
             try {
                 const result = await (0, workspace_hooks_1.setupWorkspaceHooks)(folder.uri.fsPath, {
-                    hookPort: latestConfig.hookPort
+                    hookPort: latestConfig.hookPort,
+                    gitIgnoreTarget: latestConfig.hooksGitIgnoreTarget
                 });
                 const modeLabel = result.mergedExisting ? "既存設定へマージ" : "新規作成";
-                output.appendLine(`[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}`);
+                const ignoreNote = result.gitIgnoreUpdated && result.gitIgnorePath
+                    ? ` / Git除外設定へ追記: ${result.gitIgnorePath}`
+                    : "";
+                output.appendLine(`[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}${ignoreNote}`);
                 updatedNames.push(folder.name);
             }
             catch (err) {

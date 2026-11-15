@@ -44,6 +44,7 @@ PC の前から離れているときでも、コマンド実行の承認やチ�
 | `antigravityDeck.autoStart` | `true` | IDE 起動時にサーバーを自動で立ち上げるか |
 | `antigravityDeck.autoCheckUpdates` | `true` | 起動時に GitHub Releases の更新を自動確認するか |
 | `antigravityDeck.autoSetupWorkspaceHooks` | `false` | ワークスペースを開いた際に `.agents/hooks.json` と `deck-hook.mjs` を自動配置するか |
+| `antigravityDeck.hooksGitIgnoreTarget` | `"gitignore"` | Workspace Hooks 配置時に `.gitignore` / `.git/info/exclude` / 追加しない (`"none"`) のどこへ除外設定を自動追記するか |
 
 ## 関連リンク
 

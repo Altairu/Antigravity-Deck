@@ -10,7 +10,7 @@ import {
 } from "./config/antigravity-bindings";
 import { DeckHookServer } from "./server/hook-server";
 import { DeckWebSocketServer } from "./server/ws-server";
-import { setupWorkspaceHooks } from "./hooks/workspace-hooks";
+import { HooksGitIgnoreTarget, setupWorkspaceHooks } from "./hooks/workspace-hooks";
 import { SessionStore } from "./state/session-store";
 import { PairingWebviewPanel } from "./ui/pairing-webview";
 import { checkExtensionUpdates } from "./updater/extension-updater";
@@ -218,6 +218,12 @@ function createVsCodeCommandBridge(
 
 function readExtensionConfig() {
   const cfg = vscode.workspace.getConfiguration("antigravityDeck");
+  const rawGitIgnoreTarget = cfg.get<string>("hooksGitIgnoreTarget", "gitignore");
+  const hooksGitIgnoreTarget: HooksGitIgnoreTarget =
+    rawGitIgnoreTarget === "gitExclude" || rawGitIgnoreTarget === "none"
+      ? rawGitIgnoreTarget
+      : "gitignore";
+
   return {
     wsPort: cfg.get<number>("wsPort", 8765),
     hookPort: cfg.get<number>("hookPort", 8766),
@@ -225,7 +231,8 @@ function readExtensionConfig() {
     waitForMobileApproval: cfg.get<boolean>("waitForMobileApproval", true),
     autoStart: cfg.get<boolean>("autoStart", true),
     autoCheckUpdates: cfg.get<boolean>("autoCheckUpdates", true),
-    autoSetupWorkspaceHooks: cfg.get<boolean>("autoSetupWorkspaceHooks", false)
+    autoSetupWorkspaceHooks: cfg.get<boolean>("autoSetupWorkspaceHooks", false),
+    hooksGitIgnoreTarget
   };
 }
 
@@ -312,11 +319,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     for (const folder of folders) {
       try {
         const result = await setupWorkspaceHooks(folder.uri.fsPath, {
-          hookPort: latestConfig.hookPort
+          hookPort: latestConfig.hookPort,
+          gitIgnoreTarget: latestConfig.hooksGitIgnoreTarget
         });
         const modeLabel = result.mergedExisting ? "既存設定へマージ" : "新規作成";
+        const ignoreNote =
+          result.gitIgnoreUpdated && result.gitIgnorePath
+            ? ` / Git除外設定へ追記: ${result.gitIgnorePath}`
+            : "";
         output.appendLine(
-          `[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}`
+          `[Hooks] ${folder.name} へ配置完了 (${modeLabel}): ${result.hooksJsonPath}${ignoreNote}`
         );
         updatedNames.push(folder.name);
       } catch (err) {

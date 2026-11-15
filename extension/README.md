@@ -44,6 +44,7 @@ Even when you step away from your PC, you can approve or reject tool executions,
 | `antigravityDeck.autoStart` | `true` | Automatically start servers on IDE startup |
 | `antigravityDeck.autoCheckUpdates` | `true` | Automatically check GitHub Releases for extension updates on startup |
 | `antigravityDeck.autoSetupWorkspaceHooks` | `false` | Automatically configure `.agents/hooks.json` and `deck-hook.mjs` when opening a workspace |
+| `antigravityDeck.hooksGitIgnoreTarget` | `"gitignore"` | Automatically append `.agents/hooks.json` and `.agents/scripts/deck-hook.mjs` to `.gitignore`, `.git/info/exclude`, or `"none"` when setting up workspace hooks |
 
 ## Links
 

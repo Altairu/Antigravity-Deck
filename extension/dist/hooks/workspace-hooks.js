@@ -10,6 +10,10 @@ exports.hasWorkspaceHooks = hasWorkspaceHooks;
 exports.setupWorkspaceHooks = setupWorkspaceHooks;
 const promises_1 = __importDefault(require("node:fs/promises"));
 const node_path_1 = __importDefault(require("node:path"));
+const HOOK_GITIGNORE_ENTRIES = [
+    ".agents/hooks.json",
+    ".agents/scripts/deck-hook.mjs"
+];
 function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -205,12 +209,76 @@ async function hasWorkspaceHooks(workspaceDir) {
         return false;
     }
 }
+// 対象ワークスペースの除外設定に未登録のHooksエントリを抽出する
+function resolveMissingGitIgnoreEntries(existingContent) {
+    const lines = new Set(existingContent
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && !line.startsWith("#")));
+    if (lines.has(".agents") ||
+        lines.has(".agents/") ||
+        lines.has("/.agents") ||
+        lines.has("/.agents/")) {
+        return [];
+    }
+    return HOOK_GITIGNORE_ENTRIES.filter((entry) => !lines.has(entry) && !lines.has(`/${entry}`));
+}
+// 設定に応じたGit除外ファイルのパスを解決する
+async function resolveGitIgnoreTargetPath(workspaceDir, target) {
+    if (target === "none") {
+        return undefined;
+    }
+    if (target === "gitignore") {
+        return node_path_1.default.join(workspaceDir, ".gitignore");
+    }
+    const gitDirPath = node_path_1.default.join(workspaceDir, ".git");
+    try {
+        const stat = await promises_1.default.stat(gitDirPath);
+        if (!stat.isDirectory()) {
+            return undefined;
+        }
+        return node_path_1.default.join(gitDirPath, "info", "exclude");
+    }
+    catch {
+        return undefined;
+    }
+}
+// .gitignore または .git/info/exclude にHooksファイルを重複なく追記する
+async function ensureHooksGitIgnore(workspaceDir, target) {
+    const targetPath = await resolveGitIgnoreTargetPath(workspaceDir, target);
+    if (!targetPath) {
+        return { updated: false };
+    }
+    let existing = "";
+    try {
+        existing = await promises_1.default.readFile(targetPath, "utf8");
+    }
+    catch {
+        // ファイル未作成の場合は空文字として新規作成する
+    }
+    const missing = resolveMissingGitIgnoreEntries(existing);
+    if (missing.length === 0) {
+        return { path: targetPath, updated: false };
+    }
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    const prefix = existing.length === 0
+        ? ""
+        : existing.endsWith("\n")
+            ? existing
+            : `${existing}${eol}`;
+    const block = ["# Antigravity Deck hooks", ...missing].join(eol);
+    const nextContent = `${prefix}${block}${eol}`;
+    await promises_1.default.mkdir(node_path_1.default.dirname(targetPath), { recursive: true });
+    await promises_1.default.writeFile(targetPath, nextContent, "utf8");
+    return { path: targetPath, updated: true };
+}
 // 対象ワークスペースへ .agents/hooks.json と .agents/scripts/deck-hook.mjs を書き出す
 async function setupWorkspaceHooks(workspaceDir, options) {
     const agentsDir = node_path_1.default.join(workspaceDir, ".agents");
     const scriptsDir = node_path_1.default.join(agentsDir, "scripts");
     const hooksJsonPath = node_path_1.default.join(agentsDir, "hooks.json");
     const scriptPath = node_path_1.default.join(scriptsDir, "deck-hook.mjs");
+    const gitIgnoreTarget = options?.gitIgnoreTarget ?? "gitignore";
     await promises_1.default.mkdir(scriptsDir, { recursive: true });
     let baseHooksConfig = {};
     let mergedExisting = false;
@@ -231,10 +299,14 @@ async function setupWorkspaceHooks(workspaceDir, options) {
     };
     await promises_1.default.writeFile(hooksJsonPath, `${JSON.stringify(nextHooksConfig, null, 2)}\n`, "utf8");
     await promises_1.default.writeFile(scriptPath, buildDeckHookScript(options?.hookPort), "utf8");
+    const gitIgnoreResult = await ensureHooksGitIgnore(workspaceDir, gitIgnoreTarget);
     return {
         hooksJsonPath,
         scriptPath,
-        mergedExisting
+        mergedExisting,
+        gitIgnorePath: gitIgnoreResult.path,
+        gitIgnoreUpdated: gitIgnoreResult.updated,
+        gitIgnoreTarget
     };
 }
 //# sourceMappingURL=workspace-hooks.js.map

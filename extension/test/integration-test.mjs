@@ -343,13 +343,22 @@ async function run() {
     assert.equal(parsedRelease?.version, "0.2.0");
     assert.equal(parsedRelease?.assetName, "antigravity-deck-0.2.0.vsix");
 
-    // 8. ワークスペースHooks自動導入が新規作成と既存設定マージの両方を正しく処理すること
+    // 8. ワークスペースHooks自動導入が新規作成と既存設定マージ、およびGit除外設定への自動追記を正しく処理すること
     assert.equal(await hasWorkspaceHooks(tempFreshWorkspace), false);
     const freshResult = await setupWorkspaceHooks(tempFreshWorkspace);
     assert.equal(freshResult.mergedExisting, false);
+    assert.equal(freshResult.gitIgnoreTarget, "gitignore");
+    assert.equal(freshResult.gitIgnoreUpdated, true);
     assert.equal(await hasWorkspaceHooks(tempFreshWorkspace), true);
     const freshScript = await fs.readFile(freshResult.scriptPath, "utf8");
     assert.match(freshScript, /8766/);
+    const freshGitIgnore = await fs.readFile(path.join(tempFreshWorkspace, ".gitignore"), "utf8");
+    assert.match(freshGitIgnore, /^\.agents\/hooks\.json$/m);
+    assert.match(freshGitIgnore, /^\.agents\/scripts\/deck-hook\.mjs$/m);
+
+    // 同じワークスペースで再実行しても .gitignore が重複追記されないこと
+    const rerunResult = await setupWorkspaceHooks(tempFreshWorkspace);
+    assert.equal(rerunResult.gitIgnoreUpdated, false);
 
     await fs.mkdir(path.join(tempMergeWorkspace, ".agents"), { recursive: true });
     await fs.writeFile(
@@ -357,9 +366,11 @@ async function run() {
       JSON.stringify({ "custom-hook": { enabled: true } }, null, 2),
       "utf8"
     );
+    await fs.writeFile(path.join(tempMergeWorkspace, ".gitignore"), "node_modules/", "utf8");
     assert.equal(await hasWorkspaceHooks(tempMergeWorkspace), false);
     const mergeResult = await setupWorkspaceHooks(tempMergeWorkspace, { hookPort: 18766 });
     assert.equal(mergeResult.mergedExisting, true);
+    assert.equal(mergeResult.gitIgnoreUpdated, true);
     assert.equal(await hasWorkspaceHooks(tempMergeWorkspace), true);
 
     const mergedHooksJson = JSON.parse(await fs.readFile(mergeResult.hooksJsonPath, "utf8"));
@@ -369,6 +380,36 @@ async function run() {
 
     const mergedScript = await fs.readFile(mergeResult.scriptPath, "utf8");
     assert.match(mergedScript, /18766/);
+    const mergedGitIgnore = await fs.readFile(path.join(tempMergeWorkspace, ".gitignore"), "utf8");
+    assert.ok(mergedGitIgnore.startsWith("node_modules/\n"));
+    assert.match(mergedGitIgnore, /^\.agents\/hooks\.json$/m);
+    assert.match(mergedGitIgnore, /^\.agents\/scripts\/deck-hook\.mjs$/m);
+
+    // gitExclude と none の各モードが設定通りに動作すること
+    const tempExcludeWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-exclude-"));
+    const tempNoneWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "deck-hooks-none-"));
+    try {
+      await fs.mkdir(path.join(tempExcludeWorkspace, ".git"), { recursive: true });
+      const excludeResult = await setupWorkspaceHooks(tempExcludeWorkspace, {
+        gitIgnoreTarget: "gitExclude"
+      });
+      assert.equal(excludeResult.gitIgnoreUpdated, true);
+      const excludeContent = await fs.readFile(
+        path.join(tempExcludeWorkspace, ".git", "info", "exclude"),
+        "utf8"
+      );
+      assert.match(excludeContent, /^\.agents\/hooks\.json$/m);
+      assert.match(excludeContent, /^\.agents\/scripts\/deck-hook\.mjs$/m);
+
+      const noneResult = await setupWorkspaceHooks(tempNoneWorkspace, {
+        gitIgnoreTarget: "none"
+      });
+      assert.equal(noneResult.gitIgnoreUpdated, false);
+      await assert.rejects(fs.access(path.join(tempNoneWorkspace, ".gitignore")));
+    } finally {
+      await fs.rm(tempExcludeWorkspace, { recursive: true, force: true });
+      await fs.rm(tempNoneWorkspace, { recursive: true, force: true });
+    }
 
     ws.close();
     console.log("EXTENSION_INTEGRATION_TEST_OK");
