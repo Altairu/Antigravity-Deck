@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+* Convert ISO 8601 UTC timestamps in Android chat history and conversation picker list to the device local timezone before formatting
+
 ## 0.3.0
 
 * Add mobile auto-approve mode synchronized from the Android app (`set_auto_approve` / `auto_approve`) to automatically approve `PreToolUse` hooks without showing approval UI or notifications

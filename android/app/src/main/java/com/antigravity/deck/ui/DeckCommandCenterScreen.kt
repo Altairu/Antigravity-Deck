@@ -102,6 +102,7 @@ import com.antigravity.deck.model.ReasoningEffort
 import com.antigravity.deck.network.ConnectionStatus
 import com.antigravity.deck.ui.theme.AppThemeMode
 import com.antigravity.deck.ui.theme.DeckColors
+import java.time.ZoneId
 
 @Composable
 fun DeckCommandCenterScreen(
@@ -660,20 +661,6 @@ private enum class ResponseTab {
     LATEST
 }
 
-private val ISO_TIME_REGEX = Regex("""T(\d{2}:\d{2})""")
-private val ISO_DATE_TIME_REGEX = Regex("""^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})""")
-
-private fun extractShortTime(timestamp: String?): String? {
-    if (timestamp.isNullOrBlank()) return null
-    return ISO_TIME_REGEX.find(timestamp)?.groupValues?.getOrNull(1)
-}
-
-private fun extractShortDateTime(timestamp: String?): String? {
-    if (timestamp.isNullOrBlank()) return null
-    val match = ISO_DATE_TIME_REGEX.find(timestamp) ?: return null
-    return "${match.groupValues[1]} ${match.groupValues[2]}"
-}
-
 @Composable
 private fun PanelTabSelector(
     options: List<Pair<ResponseTab, String>>,
@@ -729,7 +716,8 @@ private fun ConversationMessageCard(
         DeckColors.BorderMuted
     }
     val roleColor = if (isUser) DeckColors.AccentBlue else DeckColors.StatusDone
-    val shortTime = remember(message.timestamp) { extractShortTime(message.timestamp) }
+    val zoneId = ZoneId.systemDefault()
+    val shortTime = remember(message.timestamp, zoneId) { formatShortTime(message.timestamp, zoneId) }
 
     Surface(
         modifier = Modifier
@@ -1563,6 +1551,7 @@ private fun ConversationPickerDialog(
     onDismiss: () -> Unit
 ) {
     val s = LocalDeckStrings.current
+    val zoneId = ZoneId.systemDefault()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1591,8 +1580,8 @@ private fun ConversationPickerDialog(
                 ) {
                     conversations.forEach { item ->
                         val isCurrent = item.id == currentConversationId
-                        val updatedLabel = remember(item.updatedAt) {
-                            extractShortDateTime(item.updatedAt)
+                        val updatedLabel = remember(item.updatedAt, zoneId) {
+                            formatShortDateTime(item.updatedAt, zoneId)
                         }
                         Surface(
                             modifier = Modifier
